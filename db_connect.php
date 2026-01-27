@@ -3,8 +3,8 @@
 
 $host = 'localhost';
 $dbname = 'virtual_airline_cms';
-$username = '22gc_com_br';
-$password = 'J0N$#~SEuz(up\w+'; // Default XAMPP password is empty
+$username = 'u378005298_yBbJN';
+$password = 'DrSVoavfBc'; // Default XAMPP password is empty
 
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password);
