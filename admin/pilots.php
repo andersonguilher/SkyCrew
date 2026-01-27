@@ -25,115 +25,94 @@ if (isset($_POST['add_pilot'])) {
         $stmt->execute([$userId, $name, $base]);
         $pdo->commit();
         $success = "Piloto criado! Senha padrão: 123456";
-        // Refresh list
-        header("Refresh:0");
+        header("Refresh:2");
     } catch (Exception $e) {
         $pdo->rollBack();
         $error = "Erro: " . $e->getMessage();
     }
 }
+
+$pageTitle = "Gerenciar Pilotos - SkyCrew OS";
+include '../includes/layout_header.php';
 ?>
-<!DOCTYPE html>
-<html lang="pt-BR">
 
-<head>
-    <meta charset="UTF-8">
-    <title>Gerenciar Pilotos - SkyCrew Admin</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-    </style>
-</head>
+<div class="sidebar-narrow flex flex-col gap-6">
+    <div class="glass-panel p-6 rounded-3xl shrink-0">
+        <h2 class="section-title"><i class="fas fa-user-plus text-indigo-400"></i> Novo Piloto</h2>
+        <form method="POST" class="space-y-4">
+            <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Nome Completo</label>
+                <input type="text" name="name" class="form-input" placeholder="Ex: Anderson Guilherme" required>
+            </div>
+            <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">E-mail</label>
+                <input type="email" name="email" class="form-input" placeholder="pilot@kafly.com.br" required>
+            </div>
+            <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Base (ICAO)</label>
+                <input type="text" name="base" class="form-input uppercase" value="SBGR" maxlength="4" required>
+            </div>
+            <button type="submit" name="add_pilot" class="btn-glow w-full py-3 mt-2 uppercase tracking-widest text-xs">Adicionar Piloto</button>
+        </form>
+    </div>
 
-<body class="bg-gray-100 flex h-screen">
-
-    <aside class="w-64 bg-gray-900 text-white flex flex-col">
-        <div class="h-16 flex items-center justify-center font-bold text-xl border-b border-gray-800">SkyCrew Admin
+    <?php if ($success): ?>
+        <div class="glass-panel border-l-4 border-emerald-500 px-6 py-4 rounded-2xl text-emerald-400 text-sm font-bold animate-pulse">
+            <i class="fas fa-check-circle mr-2"></i> <?php echo $success; ?>
         </div>
-        <nav class="flex-1 px-4 py-6 space-y-2">
-            <a href="dashboard.php"
-                class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Painel</a>
-            <a href="financials.php"
-                class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Financeiro</a>
-            <a href="reports.php"
-                class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Relatórios</a>
-            <a href="pilots.php" class="block py-2.5 px-4 rounded bg-gray-800 text-white font-bold">Pilotos</a>
-            <a href="flights.php" class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Voos</a>
-            <a href="fleet.php" class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Frota</a>
-            <a href="settings.php"
-                class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Configurações</a>
-        </nav>
-        <div class="p-4 border-t border-gray-800"><a href="../logout.php"
-                class="block text-center text-sm text-gray-400 hover:text-white">Sair</a></div>
-    </aside>
-
-    <main class="flex-1 flex flex-col p-8 overflow-y-auto">
-        <h1 class="text-2xl font-bold text-gray-800 mb-6">Gerenciar Pilotos</h1>
-
-        <?php if ($success): ?>
-            <div class="bg-green-100 text-green-700 p-4 rounded mb-4"><?php echo $success; ?></div>
-        <?php endif; ?>
-        <?php if ($error): ?>
-            <div class="bg-red-100 text-red-700 p-4 rounded mb-4"><?php echo $error; ?></div>
-        <?php endif; ?>
-
-        <!-- Add Pilot Form -->
-        <div class="bg-white p-6 rounded shadow mb-8">
-            <h3 class="font-bold text-gray-700 mb-4">Adicionar Novo Piloto</h3>
-            <form method="POST" class="flex flex-wrap gap-4 items-end">
-                <div class="flex-1 min-w-[200px]">
-                    <label class="block text-xs font-bold text-gray-500 mb-1">Nome</label>
-                    <input type="text" name="name" class="w-full border p-2 rounded" required>
-                </div>
-                <div class="flex-1 min-w-[200px]">
-                    <label class="block text-xs font-bold text-gray-500 mb-1">E-mail</label>
-                    <input type="email" name="email" class="w-full border p-2 rounded" required>
-                </div>
-                <div class="w-24">
-                    <label class="block text-xs font-bold text-gray-500 mb-1">Base</label>
-                    <input type="text" name="base" class="w-full border p-2 rounded" value="SBGR" maxlength="4"
-                        required>
-                </div>
-                <button type="submit" name="add_pilot"
-                    class="bg-indigo-600 text-white font-bold py-2 px-6 rounded hover:bg-indigo-700">Adicionar</button>
-            </form>
+    <?php endif; ?>
+    <?php if ($error): ?>
+        <div class="glass-panel border-l-4 border-rose-500 px-6 py-4 rounded-2xl text-rose-400 text-sm font-bold">
+            <i class="fas fa-exclamation-triangle mr-2"></i> <?php echo $error; ?>
         </div>
+    <?php endif; ?>
+</div>
 
-        <!-- Pilot List -->
-        <div class="bg-white rounded shadow overflow-hidden">
-            <table class="min-w-full text-left text-sm">
-                <thead class="bg-gray-50 text-gray-500">
-                    <tr>
-                        <th class="px-6 py-3">ID</th>
-                        <th class="px-6 py-3">Nome</th>
-                        <th class="px-6 py-3">E-mail</th>
-                        <th class="px-6 py-3">Base</th>
-                        <th class="px-6 py-3">Rank</th>
-                        <th class="px-6 py-3">Horas Totais</th>
+<div class="scrollable-panel glass-panel rounded-3xl overflow-hidden flex flex-col">
+    <div class="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
+        <h2 class="section-title mb-0"><i class="fas fa-users text-indigo-400"></i> Tripulação Operacional</h2>
+        <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-white/5 px-3 py-1 rounded-full">
+            <?php echo count($pilots); ?> Pilotos Ativos
+        </div>
+    </div>
+    <div class="flex-1 overflow-y-auto">
+        <table class="w-full text-left text-[12px]">
+            <thead class="bg-white/5 sticky top-0 z-10">
+                <tr class="text-[10px] uppercase tracking-widest text-slate-500 font-bold">
+                    <th class="px-8 py-4">ID</th>
+                    <th class="px-8 py-4">Nome / E-mail</th>
+                    <th class="px-8 py-4 text-center">Base</th>
+                    <th class="px-8 py-4">Patente</th>
+                    <th class="px-8 py-4 text-right pr-12">Horas</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <?php foreach ($pilots as $p): ?>
+                    <tr class="hover:bg-white/5 transition group">
+                        <td class="px-8 py-4 text-slate-500 font-mono">#<?php echo $p['id']; ?></td>
+                        <td class="px-8 py-4">
+                            <div class="font-bold text-white"><?php echo htmlspecialchars($p['name']); ?></div>
+                            <div class="text-[10px] text-slate-500"><?php echo htmlspecialchars($p['email']); ?></div>
+                        </td>
+                        <td class="px-8 py-4 text-center">
+                            <span class="bg-indigo-500/10 text-indigo-400 px-3 py-1 rounded-lg font-bold border border-indigo-500/20">
+                                <?php echo $p['current_base']; ?>
+                            </span>
+                        </td>
+                        <td class="px-8 py-4">
+                            <div class="flex items-center gap-2">
+                                <i class="fas fa-medal text-amber-500/50"></i>
+                                <span class="font-semibold text-slate-300"><?php echo $p['rank'] ?: 'Cadet'; ?></span>
+                            </div>
+                        </td>
+                        <td class="px-8 py-4 text-right pr-12 font-mono text-indigo-300 font-bold">
+                            <?php echo number_format($p['total_hours'], 1); ?> h
+                        </td>
                     </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-100">
-                    <?php foreach ($pilots as $p): ?>
-                        <tr>
-                            <td class="px-6 py-3 text-gray-500">#<?php echo $p['id']; ?></td>
-                            <td class="px-6 py-3 font-medium text-gray-800"><?php echo htmlspecialchars($p['name']); ?></td>
-                            <td class="px-6 py-3 text-gray-500"><?php echo htmlspecialchars($p['email']); ?></td>
-                            <td class="px-6 py-3 font-mono text-indigo-600"><?php echo $p['current_base']; ?></td>
-                            <td class="px-6 py-3">
-                                <span
-                                    class="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded-full border border-gray-200"><?php echo $p['rank'] ?: 'Cadet'; ?></span>
-                            </td>
-                            <td class="px-6 py-3"><?php echo number_format($p['total_hours'], 2); ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </main>
-</body>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
 
-</html>
+<?php include '../includes/layout_footer.php'; ?>

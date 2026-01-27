@@ -5,10 +5,10 @@ require_once '../includes/PayrollSystem.php';
 requireRole('pilot');
 
 $pilotId = getCurrentPilotId($pdo);
-$sysSettings = getSystemSettings($pdo); // Fetch Global Settings
+$sysSettings = getSystemSettings($pdo);
 $payroll = new PayrollSystem($pdo);
 
-// Fetch Pilot Name if not in session
+// Fetch Pilot Name
 if (!isset($_SESSION['name'])) {
     $stmt = $pdo->prepare("SELECT name FROM pilots WHERE id = ?");
     $stmt->execute([$pilotId]);
@@ -17,237 +17,148 @@ if (!isset($_SESSION['name'])) {
     $pilotName = $_SESSION['name'];
 }
 
-// Generate for Current Month (Simulation)
+// Generate for Current Month
 $paycheck = $payroll->generatePaycheck($pilotId, date('Y-m'));
 
-// Format Helpers
-function money($val)
-{
+function money($val) {
     global $sysSettings;
-    return $sysSettings['currency_symbol'] . ' ' . number_format($val, 2, ',', '.');
+    return ($sysSettings['currency_symbol'] ?? 'R$') . ' ' . number_format($val, 2, ',', '.');
 }
+
+$pageTitle = "Holerite - SkyCrew OS";
+include '../includes/layout_header.php';
 ?>
-<!DOCTYPE html>
-<html lang="pt-BR">
 
-<head>
-    <meta charset="UTF-8">
-    <title>Holerite - <?php echo htmlspecialchars($sysSettings['va_name']); ?></title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background: #e2e8f0;
-        }
-
-        .receipt-font {
-            font-family: 'Courier Prime', monospace;
-        }
-
-        .watermark {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%) rotate(-45deg);
-            font-size: 8rem;
-            font-weight: bold;
-            color: rgba(0, 0, 0, 0.03);
-            pointer-events: none;
-            z-index: 0;
-            white-space: nowrap; 
-        }
-        @media print {
-            .no-print { display: none; }
-            body { background: white; padding: 0; }
-        }
-    </style>
-</head>
-
-<body class="p-8 min-h-screen flex items-center justify-center">
-
-    <div
-        class="max-w-4xl w-full bg-white shadow-2xl rounded-sm overflow-hidden relative receipt-font text-sm border-t-8 border-gray-800">
-
-        <div class="watermark"><?php echo strtoupper($sysSettings['va_callsign'] ?? 'SKY'); ?></div>
-
-        <!-- Header -->
-        <div class="border-b-2 border-gray-800 p-8 flex justify-between items-start relative z-10">
-            <div>
-                <h1 class="text-3xl font-bold text-gray-800">HOLERITE DE PAGAMENTO</h1>
-                <p class="text-gray-500 uppercase mt-1"><?php echo htmlspecialchars($sysSettings['va_name']); ?> - Demonstrativo Mensal</p>
-            </div>
-            <div class="text-right">
-                <div class="bg-gray-800 text-white px-4 py-2 font-bold text-lg inline-block mb-2">
-                    <?php echo date('M/Y'); ?>
-                </div>
-                <p class="text-gray-600 font-bold">Ref: 01/<?php echo date('m/Y'); ?> a <?php echo date('t/m/Y'); ?></p>
-            </div>
+<div class="flex-1 flex flex-col space-y-6 overflow-hidden max-w-5xl mx-auto w-full">
+    <div class="flex justify-between items-end shrink-0">
+        <div>
+            <h2 class="text-2xl font-bold text-white flex items-center gap-3">
+                <i class="fas fa-wallet text-indigo-400"></i> Demonstrativo de Pagamento
+            </h2>
+            <p class="text-[10px] text-slate-500 uppercase tracking-widest mt-1">Recibo de Vencimentos - <?php echo date('M/Y'); ?></p>
         </div>
-
-        <!-- Employee Info -->
-        <div class="p-6 bg-gray-50 border-b border-gray-200 grid grid-cols-2 gap-8 relative z-10">
-            <div>
-                <p class="text-xs text-gray-400 uppercase font-bold">Funcionário</p>
-                <p class="text-lg font-bold">
-                    <?php echo strtoupper($pilotName); ?>
-                </p>
-                <p class="text-gray-600">ID: <?php echo str_pad($pilotId, 6, '0', STR_PAD_LEFT); ?></p>
-            </div>
-            <div class="text-right">
-                <p class="text-xs text-gray-400 uppercase font-bold">Cargo / Patente</p>
-                <p class="text-lg font-bold text-indigo-900">
-                    <?php echo strtoupper($paycheck['rank'] ?? 'CADET'); ?>
-                </p>
-                <p class="text-gray-600">Base: Fixa</p>
-            </div>
+        <div class="flex gap-2 no-print">
+            <button onclick="window.print()" class="bg-indigo-500 hover:bg-indigo-600 px-4 py-2 rounded-2xl text-[10px] font-bold text-white uppercase tracking-widest transition flex items-center gap-2">
+                <i class="fas fa-print"></i> Imprimir PDF
+            </button>
+            <a href="dashboard.php" class="bg-white/5 border border-white/10 px-4 py-2 rounded-2xl text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:bg-white/10 transition">
+                <i class="fas fa-arrow-left"></i> Painel
+            </a>
         </div>
-
-        <!-- Table -->
-        <div class="p-8 relative z-10">
-            <table class="w-full mb-8">
-                <thead>
-                    <tr class="border-b-2 border-gray-800 text-left">
-                        <th class="py-2 w-16">Cód.</th>
-                        <th class="py-2">Descrição</th>
-                        <th class="py-2 text-center">Ref.</th>
-                        <th class="py-2 text-right text-green-700">Vencimentos</th>
-                        <th class="py-2 text-right text-red-700">Descontos</th>
-                    </tr>
-                </thead>
-                <tbody class="text-gray-700">
-                    <!-- Earnings -->
-                    <tr>
-                        <td class="py-2">001</td>
-                        <td class="py-2 font-bold">Salário Base (<?php echo $paycheck['rank'] ?? 'Cadet'; ?>)</td>
-                        <td class="py-2 text-center">30d</td>
-                        <td class="py-2 text-right">
-                            <?php echo money($paycheck['base_salary']); ?>
-                        </td>
-                        <td class="py-2 text-right"></td>
-                    </tr>
-                    <tr>
-                        <td class="py-2">002</td>
-                        <td class="py-2">Hora de Voo</td>
-                        <td class="py-2 text-center">
-                            <?php echo number_format($paycheck['hours_flown'], 1); ?>h
-                        </td>
-                        <td class="py-2 text-right">
-                            <?php echo money($paycheck['flight_pay']); ?>
-                        </td>
-                        <td class="py-2 text-right"></td>
-                    </tr>
-
-                    <!-- Deductions -->
-                    <tr class="bg-red-50/50">
-                        <td class="py-2">101</td>
-                        <td class="py-2">INSS (Previdência)</td>
-                        <td class="py-2 text-center">11%</td>
-                        <td class="py-2 text-right"></td>
-                        <td class="py-2 text-right">
-                            <?php echo money($paycheck['pension_deduction']); ?>
-                        </td>
-                    </tr>
-                    <tr class="bg-red-50/50">
-                        <td class="py-2">102</td>
-                        <td class="py-2">IRRF (Imposto de Renda)</td>
-                        <td class="py-2 text-center">15%</td>
-                        <td class="py-2 text-right"></td>
-                        <td class="py-2 text-right">
-                            <?php echo money($paycheck['tax_deduction']); ?>
-                        </td>
-                    </tr>
-
-                    <?php if ($paycheck['per_diem_deduction'] > 0): ?>
-                        <tr class="bg-orange-50 font-bold text-red-800 cursor-pointer hover:bg-orange-100 transition"
-                            onclick="document.getElementById('idle-details').classList.toggle('hidden')">
-                            <td class="py-2">205</td>
-                            <td class="py-2 flex items-center">
-                                Custo Operacional (Ociosidade)
-                                <i class="fas fa-chevron-down ml-2 text-xs opacity-50"></i>
-                            </td>
-                            <td class="py-2 text-center">
-                                <?php echo round($paycheck['idle_days'], 1); ?>d
-                            </td>
-                            <td class="py-2 text-right"></td>
-                            <td class="py-2 text-right">
-                                <?php echo money($paycheck['per_diem_deduction']); ?>
-                            </td>
-                        </tr>
-                        <!-- Hidden Detail Row -->
-                        <tr id="idle-details" class="hidden bg-orange-50/50 text-xs text-red-600">
-                            <td colspan="5" class="py-2 px-4 shadow-inner">
-                                <p class="font-bold mb-1 ml-10">Detalhamento de Dias Ociosos ( > 1 dia sem voo):</p>
-                                <ul class="ml-10 list-disc pl-4 space-y-1">
-                                    <?php
-                                    if (isset($paycheck['idle_details'])) {
-                                        foreach ($paycheck['idle_details'] as $detail) {
-                                            $dailyCost = (float)$sysSettings['daily_idle_cost'];
-                                            $currency = $sysSettings['currency_symbol'];
-                                            $cost = $detail['days'] * $dailyCost; 
-                                            if (isset($detail['breakdown'])) {
-                                                echo "<li class='mb-2'><span class='font-bold block'>De {$detail['start']} até {$detail['end']} (Total: $currency " . number_format($cost, 2, ',', '.') . ")</span>" . $detail['breakdown'] . "</li>";
-                                            } else {
-                                                echo "<li>De {$detail['start']} até {$detail['end']} ({$detail['days']} dias) - $currency " . number_format($cost, 2, ',', '.') . "</li>";
-                                            }
-                                        }
-                                    }
-                                    ?>
-                                </ul>
-                            </td>
-                        </tr>
-                    <?php endif; ?>
-
-                </tbody>
-            </table>
-
-            <!-- Totals -->
-            <div class="flex justify-between items-end border-t-2 border-gray-800 pt-4">
-                <div class="text-gray-500 text-xs w-1/2">
-                    <p>DECLARO TER RECEBIDO A IMPORTÂNCIA LÍQUIDA DISCRIMINADA NESTE RECIBO.</p>
-                    <p class="mt-8 border-t border-gray-400 w-3/4 pt-1">ASSINATURA DO COLABORADOR</p>
-                </div>
-                <div class="w-1/2">
-                    <div class="flex justify-between mb-2 text-gray-600">
-                        <span>Total Vencimentos</span>
-                        <span>
-                            <?php echo money($paycheck['base_salary'] + $paycheck['flight_pay']); ?>
-                        </span>
-                    </div>
-                    <div class="flex justify-between mb-4 text-red-600">
-                        <span>Total Descontos</span>
-                        <span>-
-                            <?php echo money($paycheck['pension_deduction'] + $paycheck['tax_deduction'] + $paycheck['per_diem_deduction']); ?>
-                        </span>
-                    </div>
-                    <div class="flex justify-between bg-gray-200 p-3 rounded font-bold text-xl border border-gray-300">
-                        <span>Líquido a Receber</span>
-                        <span class="text-gray-900">
-                            <?php echo money($paycheck['total_net_pay']); ?>
-                        </span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="bg-gray-100 p-4 text-center text-xs text-gray-400 border-t border-gray-200">
-            <?php echo htmlspecialchars($sysSettings['va_name']); ?> Management System - Documento Gerado Automaticamente em
-            <?php echo date('d/m/Y H:i:s'); ?>
-        </div>
-
-        <!-- Action Buttons -->
-        <div class="absolute top-8 right-8 no-print">
-            <a href="dashboard.php"
-                class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 shadow mr-2 font-sans text-xs">Voltar</a>
-            <button onclick="window.print()"
-                class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 shadow font-sans text-xs"><i
-                    class="fas fa-print mr-1"></i> Imprimir</button>
-        </div>
-
     </div>
-</body>
 
-</html>
+    <!-- Main Financial Card -->
+    <div class="glass-panel rounded-3xl overflow-hidden flex flex-col flex-1 border border-white/10 bg-gradient-to-br from-slate-900/50 to-indigo-900/20">
+        <!-- Dashboard Header -->
+        <div class="p-10 grid grid-cols-1 md:grid-cols-3 gap-8 border-b border-white/5 bg-white/5">
+            <div class="space-y-4 text-center md:text-left">
+                <div>
+                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Colaborador</p>
+                    <h3 class="text-xl font-bold text-white"><?php echo $pilotName; ?></h3>
+                    <p class="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mt-1">ID: <?php echo str_pad($pilotId, 4, '0', STR_PAD_LEFT); ?></p>
+                </div>
+            </div>
+            <div class="space-y-4 text-center">
+                <div>
+                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Cargo Operacional</p>
+                    <h3 class="text-xl font-bold text-white"><?php echo $paycheck['rank'] ?? 'Cadet'; ?></h3>
+                    <p class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest mt-1">Status: Ativo</p>
+                </div>
+            </div>
+            <div class="space-y-4 text-center md:text-right">
+                <div>
+                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Líquido a Receber</p>
+                    <h3 class="text-3xl font-black text-emerald-400"><?php echo money($paycheck['total_net_pay']); ?></h3>
+                </div>
+            </div>
+        </div>
+
+        <!-- Breakdown Row -->
+        <div class="p-10 flex-1 overflow-y-auto custom-scrollbar">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                <!-- Vencimentos -->
+                <div class="space-y-6">
+                    <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <i class="fas fa-plus-circle text-emerald-500"></i> Proventos e Vencimentos
+                    </h4>
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5 group hover:bg-white/10 transition">
+                            <div>
+                                <p class="text-sm font-bold text-white">Salário Base</p>
+                                <p class="text-[10px] text-slate-500 uppercase font-bold tracking-tighter">Fixo Mensal</p>
+                            </div>
+                            <span class="font-bold text-emerald-400"><?php echo money($paycheck['base_salary']); ?></span>
+                        </div>
+                        <div class="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5 group hover:bg-white/10 transition">
+                            <div>
+                                <p class="text-sm font-bold text-white">Adicional de Voo</p>
+                                <p class="text-[10px] text-slate-500 uppercase font-bold tracking-tighter"><?php echo number_format($paycheck['hours_flown'], 1); ?> horas realizadas</p>
+                            </div>
+                            <span class="font-bold text-emerald-400"><?php echo money($paycheck['flight_pay']); ?></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Descontos -->
+                <div class="space-y-6">
+                    <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <i class="fas fa-minus-circle text-rose-500"></i> Deduções e Descontos
+                    </h4>
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5 group hover:bg-white/10 transition">
+                            <div>
+                                <p class="text-sm font-bold text-white">Contribuição Previdenciária</p>
+                                <p class="text-[10px] text-slate-500 uppercase font-bold tracking-tighter">INSS (11%)</p>
+                            </div>
+                            <span class="font-bold text-rose-400">- <?php echo money($paycheck['pension_deduction']); ?></span>
+                        </div>
+                        <div class="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5 group hover:bg-white/10 transition">
+                            <div>
+                                <p class="text-sm font-bold text-white">IRRF Retido</p>
+                                <p class="text-[10px] text-slate-500 uppercase font-bold tracking-tighter">Imposto de Renda (15%)</p>
+                            </div>
+                            <span class="font-bold text-rose-400">- <?php echo money($paycheck['tax_deduction']); ?></span>
+                        </div>
+                        <?php if ($paycheck['per_diem_deduction'] > 0): ?>
+                        <div class="flex justify-between items-center p-4 bg-amber-500/5 rounded-2xl border border-amber-500/10 group hover:bg-amber-500/10 transition">
+                            <div>
+                                <p class="text-sm font-bold text-amber-500">Multa de Inatividade</p>
+                                <p class="text-[10px] text-amber-600/60 uppercase font-bold tracking-tighter"><?php echo round($paycheck['idle_days'], 1); ?> dias ociosos detectados</p>
+                            </div>
+                            <span class="font-bold text-rose-400">- <?php echo money($paycheck['per_diem_deduction']); ?></span>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Document Footer -->
+        <div class="px-10 py-6 bg-black/40 flex justify-between items-center">
+            <div class="text-[9px] font-bold text-slate-600 uppercase tracking-[0.2em]">
+                Autenticação Digital: <?php echo md5($pilotId . date('Y-m') . $paycheck['total_net_pay']); ?>
+            </div>
+            <div class="text-[9px] font-bold text-slate-600 uppercase tracking-[0.2em]">
+                Documento Gerado por Ikaros Finance em <?php echo date('d/m/Y H:i'); ?>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+@media print {
+    .no-print { display: none !important; }
+    body { background: white !important; color: black !important; }
+    .glass-panel { border: none !important; background: white !important; box-shadow: none !important; }
+    .text-white { color: black !important; }
+    .text-slate-500, .text-slate-400 { color: #666 !important; }
+    .bg-white\/5 { background: #f5f5f5 !important; }
+    .border-white\/5 { border-color: #eee !important; }
+    .bg-black\/40 { background: #eee !important; }
+    .immersive-bg, .top-bar { display: none !important; }
+    .content-area { padding: 0 !important; overflow: visible !important; }
+    .page-container { height: auto !important; }
+}
+</style>
+
+<?php include '../includes/layout_footer.php'; ?>

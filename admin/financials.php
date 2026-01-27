@@ -23,9 +23,6 @@ $totalFuelCost = $totalFuel * $fuelPrice;
 // Pax
 $totalPax = $pdo->query("SELECT SUM(pax) FROM flight_reports WHERE status='Approved'")->fetchColumn() ?: 0;
 
-// Flights
-$totalFlights = $pdo->query("SELECT COUNT(*) FROM flight_reports WHERE status='Approved'")->fetchColumn() ?: 0;
-
 // Chart Data (Last 6 Months)
 $chartData = [];
 $months = [];
@@ -59,190 +56,233 @@ $topRoutes = $pdo->query("
 
 // Calculate Profit
 $operatingProfit = $totalRevenue - $totalFuelCost;
+
+$pageTitle = "Financeiro - SkyCrew OS";
+$extraHead = '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>';
+include '../includes/layout_header.php';
 ?>
-<!DOCTYPE html>
-<html lang="pt-BR">
 
-<head>
-    <meta charset="UTF-8">
-    <title>Financeiro - <?php echo htmlspecialchars($sysSettings['va_name'] ?? 'SkyCrew'); ?></title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-</head>
-
-<body class="bg-gray-100 flex h-screen font-inter">
-
-    <!-- Sidebar -->
-    <aside class="w-64 bg-gray-900 text-white flex flex-col">
-        <div class="h-16 flex items-center justify-center font-bold text-xl border-b border-gray-800">
-            SkyCrew Admin
-        </div>
-        <nav class="flex-1 px-4 py-6 space-y-2">
-            <a href="dashboard.php" class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Painel</a>
-            <a href="financials.php" class="block py-2.5 px-4 rounded bg-gray-800 text-white font-bold">Financeiro</a>
-            <a href="reports.php" class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Relatórios</a>
-            <a href="pilots.php" class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Pilotos</a>
-            <a href="flights.php" class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Voos</a>
-            <a href="fleet.php" class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Frota</a>
-            <a href="settings.php" class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Configurações</a>
-        </nav>
-        <div class="p-4 border-t border-gray-800">
-            <a href="../logout.php" class="block text-center text-sm text-gray-400 hover:text-white">Sair</a>
-        </div>
-    </aside>
-
-    <!-- Main -->
-    <main class="flex-1 overflow-y-auto">
-        <header class="bg-white shadow h-16 flex items-center px-6 justify-between">
-            <h2 class="text-xl font-semibold text-gray-800"> <i class="fas fa-chart-line mr-2"></i> Dashboard Financeiro
-            </h2>
-            <div class="text-sm text-gray-600">Admin</div>
-        </header>
-
-        <div class="p-6">
-
-            <!-- Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                <!-- Revenue -->
-                <div class="bg-white p-6 rounded-lg shadow border-l-4 border-green-500">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <p class="text-xs font-bold text-gray-400 uppercase">Receita Total</p>
-                            <h3 class="text-2xl font-bold text-gray-800 mt-1">R$ <?php echo number_format($totalRevenue, 2, ',', '.'); ?></h3>
-                        </div>
-                        <div class="p-2 bg-green-100 rounded text-green-600">
-                            <i class="fas fa-dollar-sign"></i>
-                        </div>
-                    </div>
+<div class="space-y-6 flex-1 flex flex-col overflow-hidden">
+    <!-- Stats Row -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 shrink-0">
+        <div class="glass-panel p-6 rounded-3xl border-l-4 border-emerald-500">
+            <div class="flex justify-between items-start">
+                <div>
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Receita Total</p>
+                    <h3 class="text-2xl font-bold text-white mt-1"><?php echo $sysSettings['currency_symbol'] ?? 'R$'; ?> <?php echo number_format($totalRevenue, 2, ',', '.'); ?></h3>
+                    <p class="text-[10px] text-emerald-400 font-bold mt-1 uppercase tracking-tighter">Fluxo Global</p>
                 </div>
-
-                <!-- Profit -->
-                <div class="bg-white p-6 rounded-lg shadow border-l-4 border-emerald-600">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <p class="text-xs font-bold text-gray-400 uppercase">Lucro Operacional</p>
-                            <h3 class="text-2xl font-bold text-emerald-600 mt-1">R$ <?php echo number_format($operatingProfit, 2, ',', '.'); ?></h3>
-                            <p class="text-xs text-gray-400 mt-1">Receita - Combustível</p>
-                        </div>
-                        <div class="p-2 bg-emerald-100 rounded text-emerald-600">
-                            <i class="fas fa-coins"></i>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Pax -->
-                <div class="bg-white p-6 rounded-lg shadow border-l-4 border-blue-500">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <p class="text-xs font-bold text-gray-400 uppercase">Passageiros</p>
-                            <h3 class="text-2xl font-bold text-gray-800 mt-1"><?php echo number_format($totalPax, 0, ',', '.'); ?></h3>
-                        </div>
-                        <div class="p-2 bg-blue-100 rounded text-blue-600">
-                            <i class="fas fa-users"></i>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Fuel -->
-                <div class="bg-white p-6 rounded-lg shadow border-l-4 border-orange-500">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <p class="text-xs font-bold text-gray-400 uppercase">Combustível</p>
-                            <h3 class="text-2xl font-bold text-gray-800 mt-1"><?php echo number_format($totalFuel, 0, ',', '.'); ?> kg</h3>
-                            <p class="text-xs text-red-400 mt-1">- R$ <?php echo number_format($totalFuelCost, 2, ',', '.'); ?></p>
-                        </div>
-                        <div class="p-2 bg-orange-100 rounded text-orange-600">
-                            <i class="fas fa-gas-pump"></i>
-                        </div>
-                    </div>
+                <div class="bg-emerald-500/10 p-3 rounded-2xl text-emerald-400">
+                    <i class="fas fa-wallet text-xl"></i>
                 </div>
             </div>
+        </div>
 
-            <!-- Chart Section -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
-                <div class="bg-white p-6 rounded-lg shadow">
-                    <h3 class="font-bold text-gray-700 mb-4">Evolução Financeira (Últimos 6 Meses)</h3>
-                    <div class="h-64">
-                         <canvas id="financeChart"></canvas>
-                    </div>
+        <div class="glass-panel p-6 rounded-3xl border-l-4 border-indigo-500 shadow-xl shadow-indigo-500/5">
+            <div class="flex justify-between items-start">
+                <div>
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Lucro Operacional</p>
+                    <h3 class="text-2xl font-bold text-indigo-400 mt-1"><?php echo $sysSettings['currency_symbol'] ?? 'R$'; ?> <?php echo number_format($operatingProfit, 2, ',', '.'); ?></h3>
+                    <p class="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-tighter">Líquido Estimado</p>
                 </div>
-                
-                <div class="bg-white p-6 rounded-lg shadow">
-                     <h3 class="font-bold text-gray-700 mb-4">Top Rotas Lucrativas</h3>
-                     <div class="overflow-x-auto">
-                         <table class="min-w-full text-sm">
-                             <thead class="bg-gray-50">
-                                 <tr>
-                                     <th class="px-4 py-2 text-left">Voo</th>
-                                     <th class="px-4 py-2 text-right">Receita Média</th>
-                                     <th class="px-4 py-2 text-right">Ocupação (Méd)</th>
-                                 </tr>
-                             </thead>
-                             <tbody>
-                                <?php if (count($topRoutes) > 0): ?>
-                                    <?php foreach ($topRoutes as $route): ?>
-                                     <tr class="border-t">
-                                         <td class="px-4 py-2 font-bold text-gray-700"><?php echo $route['flight_number']; ?> <span class="text-xs font-normal text-gray-400">(<?php echo $route['flights_count']; ?> voos)</span></td>
-                                         <td class="px-4 py-2 text-right text-green-600 font-mono">R$ <?php echo number_format($route['avg_revenue'], 2, ',', '.'); ?></td>
-                                         <td class="px-4 py-2 text-right"><?php echo number_format($route['load_factor'], 1); ?>%</td>
-                                     </tr>
-                                    <?php endforeach; ?>
-                                <?php else: ?>
-                                    <tr><td colspan="3" class="px-4 py-8 text-center text-gray-400">Nenhum dado registrado ainda.</td></tr>
-                                <?php endif; ?>
-                             </tbody>
-                         </table>
-                     </div>
+                <div class="bg-indigo-500/10 p-3 rounded-2xl text-indigo-400">
+                    <i class="fas fa-coins text-xl"></i>
                 </div>
             </div>
-
         </div>
-    </main>
+
+        <div class="glass-panel p-6 rounded-3xl border-l-4 border-blue-500">
+            <div class="flex justify-between items-start">
+                <div>
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Passageiros</p>
+                    <h3 class="text-2xl font-bold text-white mt-1"><?php echo number_format($totalPax, 0, ',', '.'); ?></h3>
+                    <p class="text-[10px] text-blue-400 font-bold mt-1 uppercase tracking-tighter">Embarcados</p>
+                </div>
+                <div class="bg-blue-500/10 p-3 rounded-2xl text-blue-400">
+                    <i class="fas fa-users text-xl"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="glass-panel p-6 rounded-3xl border-l-4 border-amber-500">
+            <div class="flex justify-between items-start">
+                <div>
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Combustível</p>
+                    <h3 class="text-2xl font-bold text-white mt-1"><?php echo number_format($totalFuel, 0, ',', '.'); ?> <span class="text-xs text-slate-500 font-normal">kg</span></h3>
+                    <p class="text-[10px] text-rose-500 font-bold mt-1 uppercase tracking-tighter">- <?php echo $sysSettings['currency_symbol'] ?? 'R$'; ?> <?php echo number_format($totalFuelCost, 2, ',', '.'); ?></p>
+                </div>
+                <div class="bg-amber-500/10 p-3 rounded-2xl text-amber-400">
+                    <i class="fas fa-gas-pump text-xl"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 overflow-hidden">
+        <!-- Chart -->
+        <div class="glass-panel p-8 rounded-3xl flex flex-col overflow-hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i class="fas fa-chart-area text-indigo-400"></i> Evolução Financeira
+                </h3>
+                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Últimos 6 meses</span>
+            </div>
+            <div class="flex-1 min-h-0 relative">
+                <canvas id="financeChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Top Routes -->
+        <div class="glass-panel rounded-3xl flex flex-col overflow-hidden">
+            <div class="p-6 border-b border-white/10 bg-white/5 flex justify-between items-center">
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i class="fas fa-trophy text-amber-400"></i> Malha de Performance
+                </h3>
+                <div class="bg-white/5 border border-white/10 px-3 py-1 rounded-full text-[10px] font-bold text-slate-400 uppercase tracking-widest">Top 5 Rotas</div>
+            </div>
+            <div class="flex-1 overflow-y-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-white/5 text-[10px] uppercase font-bold text-slate-500 tracking-widest">
+                        <tr>
+                            <th class="px-8 py-4">Voo / Operações</th>
+                            <th class="px-8 py-4 text-right">Ticker Médio</th>
+                            <th class="px-8 py-4 text-right pr-12">L/F Médio</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-white/5">
+                        <?php if (count($topRoutes) > 0): ?>
+                            <?php foreach ($topRoutes as $route): ?>
+                                <tr class="hover:bg-white/5 transition group">
+                                    <td class="px-8 py-4">
+                                        <div class="flex flex-col">
+                                            <span class="font-bold text-indigo-400"><?php echo $route['flight_number']; ?></span>
+                                            <span class="text-[10px] text-slate-500 uppercase"><?php echo $route['flights_count']; ?> CICLOS COMPLETOS</span>
+                                        </div>
+                                    </td>
+                                    <td class="px-8 py-4 text-right">
+                                        <span class="font-mono font-bold text-emerald-400"><?php echo $sysSettings['currency_symbol'] ?? 'R$'; ?> <?php echo number_format($route['avg_revenue'], 2, ',', '.'); ?></span>
+                                    </td>
+                                    <td class="px-8 py-4 text-right pr-12">
+                                        <div class="flex flex-col items-end">
+                                            <span class="font-bold text-slate-200"><?php echo number_format($route['load_factor'], 1); ?>%</span>
+                                            <div class="w-16 h-1 bg-white/10 rounded-full mt-1 overflow-hidden">
+                                                <div class="h-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" style="width: <?php echo min(100, $route['load_factor']); ?>%"></div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <tr><td colspan="3" class="px-8 py-12 text-center text-slate-500 italic">Nenhuma rota aprovada detectada na malha.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    Chart.defaults.color = 'rgba(148, 163, 184, 0.5)';
+    Chart.defaults.font.family = "'Outfit', sans-serif";
+
+    const ctx = document.getElementById('financeChart').getContext('2d');
     
-    <script>
-        const ctx = document.getElementById('financeChart').getContext('2d');
-        new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: <?php echo json_encode($months); ?>,
-                datasets: [
-                    {
-                        label: 'Receita',
-                        data: <?php echo json_encode($chartData['revenue']); ?>,
-                        borderColor: '#10B981',
-                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                        fill: true,
-                        tension: 0.4
-                    },
-                    {
-                        label: 'Lucro Líquido',
-                        data: <?php echo json_encode($chartData['profit']); ?>,
-                        borderColor: '#059669',
-                        borderDash: [5, 5],
-                        fill: false,
-                        tension: 0.4
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'bottom' }
+    // Create Gradients
+    const revGradient = ctx.createLinearGradient(0, 0, 0, 400);
+    revGradient.addColorStop(0, 'rgba(16, 185, 129, 0.2)');
+    revGradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
+
+    const profitGradient = ctx.createLinearGradient(0, 0, 0, 400);
+    profitGradient.addColorStop(0, 'rgba(99, 102, 241, 0.4)');
+    profitGradient.addColorStop(1, 'rgba(99, 102, 241, 0)');
+
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: <?php echo json_encode($months); ?>,
+            datasets: [
+                {
+                    label: 'Receita Operacional',
+                    data: <?php echo json_encode($chartData['revenue']); ?>,
+                    borderColor: '#10B981',
+                    borderWidth: 3,
+                    backgroundColor: revGradient,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#10B981',
+                    pointBorderColor: 'rgba(255,255,255,0.2)',
+                    pointHoverRadius: 6
                 },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            callback: function(value) { return 'R$ ' + value/1000 + 'k'; }
+                {
+                    label: 'Lucro Estimado',
+                    data: <?php echo json_encode($chartData['profit']); ?>,
+                    borderColor: '#6366F1',
+                    borderWidth: 3,
+                    backgroundColor: profitGradient,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#6366F1',
+                    pointBorderColor: 'rgba(255,255,255,0.2)',
+                    pointHoverRadius: 6
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'index' },
+            plugins: {
+                legend: { 
+                    position: 'top',
+                    align: 'end',
+                    labels: {
+                        usePointStyle: true,
+                        boxWidth: 6,
+                        boxHeight: 6,
+                        padding: 20,
+                        font: { size: 10, weight: 'bold' }
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                    titleFont: { size: 12, weight: 'bold' },
+                    bodyFont: { size: 12 },
+                    padding: 12,
+                    borderColor: 'rgba(255,255,255,0.1)',
+                    borderWidth: 1,
+                    displayColors: true,
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) label += ': ';
+                            if (context.parsed.y !== null) {
+                                label += new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed.y);
+                            }
+                            return label;
                         }
                     }
                 }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false },
+                    ticks: {
+                        font: { size: 10 },
+                        callback: function(value) { return 'R$ ' + value/1000 + 'k'; }
+                    }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { font: { size: 10 } }
+                }
             }
-        });
-    </script>
-</body>
+        }
+    });
+</script>
 
-</html>
+<?php include '../includes/layout_footer.php'; ?>

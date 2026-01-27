@@ -24,134 +24,104 @@ try {
     $recentRosters = [];
     $error = $e->getMessage();
 }
+
+$pageTitle = "Painel Admin - SkyCrew OS";
+include '../includes/layout_header.php';
 ?>
-<!DOCTYPE html>
-<html lang="pt-BR">
 
-<head>
-    <meta charset="UTF-8">
-    <title>Painel Admin - SkyCrew</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-    </style>
-</head>
-
-<body class="bg-gray-100">
-
-    <!-- Sidebar -->
-    <div class="flex h-screen">
-        <aside class="w-64 bg-gray-900 text-white flex flex-col">
-            <div class="h-16 flex items-center justify-center font-bold text-xl border-b border-gray-800">
-                SkyCrew Admin
+<div class="scrollable-panel space-y-8">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="glass-panel p-6 rounded-3xl border-l-4 border-indigo-500 relative overflow-hidden group hover:bg-white/5 transition">
+            <div class="absolute right-0 top-0 opacity-10 transform translate-x-4 -translate-y-4 group-hover:scale-110 transition duration-500">
+                <i class="fas fa-users text-8xl text-white"></i>
             </div>
-            <nav class="flex-1 px-4 py-6 space-y-2">
-                <a href="dashboard.php" class="block py-2.5 px-4 rounded bg-gray-800 text-white font-bold">Painel</a>
-                <a href="financials.php"
-                    class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Financeiro</a>
-                <a href="reports.php"
-                    class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Relatórios</a>
-                <a href="pilots.php"
-                    class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Pilotos</a>
-                <a href="flights.php"
-                    class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Voos</a>
-                <a href="fleet.php"
-                    class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Frota</a>
-                <a href="settings.php"
-                    class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Configurações</a>
-            </nav>
-            <div class="p-4 border-t border-gray-800">
-                <a href="../logout.php" class="block text-center text-sm text-gray-400 hover:text-white">Sair</a>
+            <div class="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Total de Pilotos</div>
+            <div class="text-4xl font-black text-white mt-2"><?php echo $stats['pilots']; ?></div>
+            <div class="mt-4 flex items-center gap-2 text-[10px] text-indigo-400 font-bold">
+                <i class="fas fa-chevron-right"></i> GERENCIAR TRIPULAÇÃO
             </div>
-        </aside>
-
-        <!-- Main Content -->
-        <main class="flex-1 overflow-y-auto">
-            <header class="bg-white shadow h-16 flex items-center px-6 justify-between">
-                <h2 class="text-xl font-semibold text-gray-800">Visão Geral</h2>
-                <div class="text-sm text-gray-600">Usuário Admin</div>
-            </header>
-
-            <div class="p-6">
-                <!-- Stats Cards -->
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                    <div class="bg-white p-6 rounded-lg shadow border-l-4 border-blue-500">
-                        <div class="text-gray-500 text-sm uppercase font-semibold">Total de Pilotos</div>
-                        <div class="text-3xl font-bold text-gray-800 mt-2"><?php echo $stats['pilots']; ?></div>
-                    </div>
-                    <div class="bg-white p-6 rounded-lg shadow border-l-4 border-purple-500">
-                        <div class="text-gray-500 text-sm uppercase font-semibold">Rotas Ativas</div>
-                        <div class="text-3xl font-bold text-gray-800 mt-2"><?php echo $stats['flights']; ?></div>
-                    </div>
-                    <div class="bg-white p-6 rounded-lg shadow border-l-4 border-yellow-500">
-                        <div class="text-gray-500 text-sm uppercase font-semibold">Aprovações Pendentes</div>
-                        <div class="text-3xl font-bold text-gray-800 mt-2"><?php echo $stats['rosters_pending']; ?></div>
-                    </div>
-                </div>
-
-                <!-- Recent Activity -->
-                <div class="bg-white rounded-lg shadow overflow-hidden">
-                    <div class="px-6 py-4 border-b border-gray-200">
-                        <h3 class="font-bold text-gray-800">Atribuições de Escala Recentes</h3>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full text-left text-sm whitespace-nowrap">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th class="px-6 py-3 font-semibold text-gray-600">Piloto</th>
-                                    <th class="px-6 py-3 font-semibold text-gray-600">Voo</th>
-                                    <th class="px-6 py-3 font-semibold text-gray-600">Data</th>
-                                    <th class="px-6 py-3 font-semibold text-gray-600">Rota</th>
-                                    <th class="px-6 py-3 font-semibold text-gray-600">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-100">
-                                <?php foreach ($recentRosters as $r): ?>
-                                    <tr>
-                                        <td class="px-6 py-3 text-gray-800 font-medium">
-                                            <?php echo htmlspecialchars($r['pilot_name']); ?>
-                                        </td>
-                                        <td class="px-6 py-3 text-indigo-600 font-bold"><?php echo $r['flight_number']; ?></td>
-                                        <td class="px-6 py-3 text-gray-500"><?php echo $r['flight_date']; ?></td>
-                                        <td class="px-6 py-3 text-gray-500">
-                                            <?php echo $r['dep_icao'] . ' > ' . $r['arr_icao']; ?>
-                                        </td>
-                                        <td class="px-6 py-3">
-                                            <span class="px-2 py-1 rounded-full text-xs font-semibold
-                                            <?php
-                                            echo match ($r['status']) {
-                                                'Suggested' => 'bg-yellow-100 text-yellow-800',
-                                                'Accepted' => 'bg-green-100 text-green-800',
-                                                'Rejected' => 'bg-red-100 text-red-800',
-                                                'Flown' => 'bg-blue-100 text-blue-800',
-                                                default => 'bg-gray-100 text-gray-800'
-                                            };
-                                            ?>">
-                                                <?php
-                                                echo match ($r['status']) {
-                                                    'Suggested' => 'Sugerido',
-                                                    'Accepted' => 'Aceito',
-                                                    'Rejected' => 'Rejeitado',
-                                                    'Flown' => 'Voado',
-                                                    default => $r['status']
-                                                };
-                                                ?>
-                                            </span>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+        </div>
+        
+        <div class="glass-panel p-6 rounded-3xl border-l-4 border-indigo-500 relative overflow-hidden group hover:bg-white/5 transition">
+            <div class="absolute right-0 top-0 opacity-10 transform translate-x-4 -translate-y-4 group-hover:scale-110 transition duration-500">
+                <i class="fas fa-route text-8xl text-white"></i>
             </div>
-        </main>
+            <div class="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Rotas Ativas</div>
+            <div class="text-4xl font-black text-white mt-2"><?php echo $stats['flights']; ?></div>
+            <div class="mt-4 flex items-center gap-2 text-[10px] text-indigo-400 font-bold">
+                <i class="fas fa-chevron-right"></i> MALHA OPERACIONAL
+            </div>
+        </div>
+
+        <div class="glass-panel p-6 rounded-3xl border-l-4 border-indigo-500 relative overflow-hidden group hover:bg-white/5 transition">
+            <div class="absolute right-0 top-0 opacity-10 transform translate-x-4 -translate-y-4 group-hover:scale-110 transition duration-500">
+                <i class="fas fa-clock text-8xl text-white"></i>
+            </div>
+            <div class="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Aprovações Pendentes</div>
+            <div class="text-4xl font-black text-white mt-2"><?php echo $stats['rosters_pending']; ?></div>
+            <div class="mt-4 flex items-center gap-2 text-[10px] text-amber-400 font-bold">
+                <i class="fas fa-exclamation-circle"></i> AGUARDANDO PILOTOS
+            </div>
+        </div>
     </div>
 
-</body>
+    <div class="glass-panel rounded-3xl overflow-hidden flex flex-col">
+        <div class="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
+            <h2 class="section-title mb-0"><i class="fas fa-history text-indigo-400"></i> Atribuições de Escala Recentes</h2>
+            <a href="reports.php" class="text-[10px] font-bold text-indigo-400 uppercase tracking-widest hover:text-white transition">Ver Relatórios</a>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-[12px]">
+                <thead class="bg-white/5">
+                    <tr class="text-[10px] uppercase tracking-widest text-slate-500 font-bold">
+                        <th class="px-8 py-4">Piloto</th>
+                        <th class="px-8 py-4">Voo</th>
+                        <th class="px-8 py-4">Data</th>
+                        <th class="px-8 py-4">Rota</th>
+                        <th class="px-8 py-4 text-right pr-12">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                    <?php foreach ($recentRosters as $r): ?>
+                        <tr class="hover:bg-white/5 transition">
+                            <td class="px-8 py-4 font-bold text-white"><?php echo htmlspecialchars($r['pilot_name']); ?></td>
+                            <td class="px-8 py-4 font-mono font-bold text-indigo-400"><?php echo $r['flight_number']; ?></td>
+                            <td class="px-8 py-4 text-slate-400"><?php echo date('d/m/Y', strtotime($r['flight_date'])); ?></td>
+                            <td class="px-8 py-4">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-slate-200"><?php echo $r['dep_icao']; ?></span>
+                                    <i class="fas fa-arrow-right text-[10px] text-slate-600"></i>
+                                    <span class="text-slate-200"><?php echo $r['arr_icao']; ?></span>
+                                </div>
+                            </td>
+                            <td class="px-8 py-4 text-right pr-12">
+                                <span class="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter
+                                <?php
+                                echo match ($r['status']) {
+                                    'Suggested' => 'bg-amber-500/10 text-amber-400 border border-amber-500/20',
+                                    'Accepted' => 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20',
+                                    'Rejected' => 'bg-rose-500/10 text-rose-400 border border-rose-500/20',
+                                    'Flown' => 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20',
+                                    default => 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+                                };
+                                ?>">
+                                    <?php
+                                    echo match ($r['status']) {
+                                        'Suggested' => 'Sugerido',
+                                        'Accepted' => 'Aceito',
+                                        'Rejected' => 'Rejeitado',
+                                        'Flown' => 'Voado',
+                                        default => $r['status']
+                                    };
+                                    ?>
+                                </span>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 
-</html>
+<?php include '../includes/layout_footer.php'; ?>
