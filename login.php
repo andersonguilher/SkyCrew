@@ -9,24 +9,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'] ?? '';
 
     if (!empty($email) && !empty($password)) {
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
-        $stmt->execute([$email]);
-        $user = $stmt->fetch();
+        try {
+            $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
+            $stmt->execute([$email]);
+            $user = $stmt->fetch();
 
-        if ($user && password_verify($password, $user['password'])) {
-            // Login Success
-            $_SESSION['user_id'] = $user['id'];
-            $_SESSION['role'] = $user['role'];
-            $_SESSION['email'] = $user['email'];
+            if ($user && password_verify($password, $user['password'])) {
+                // Login Success
+                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['role'] = $user['role'];
+                $_SESSION['email'] = $user['email'];
 
-            if ($user['role'] === 'admin') {
-                header("Location: admin/dashboard.php");
+                if ($user['role'] === 'admin') {
+                    header("Location: admin/dashboard.php");
+                } else {
+                    header("Location: pilot/dashboard.php");
+                }
+                exit;
             } else {
-                header("Location: pilot/dashboard.php");
+                $error = "E-mail ou senha inválidos.";
             }
-            exit;
-        } else {
-            $error = "E-mail ou senha inválidos.";
+        } catch (Exception $e) {
+            $error = "Erro no banco de dados: " . $e->getMessage();
         }
     } else {
         $error = "Por favor, preencha todos os campos.";

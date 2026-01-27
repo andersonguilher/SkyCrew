@@ -29,7 +29,6 @@ if (!$flight) {
 }
 
 // SimBrief URL Construction
-// https://www.simbrief.com/system/dispatch.php?sharefleet=...
 $sbUrl = "https://www.simbrief.com/system/dispatch.php?";
 $params = [
     'airline' => $sysSettings['va_callsign'],
@@ -42,10 +41,8 @@ $params = [
     'depm' => substr($flight['dep_time'], 3, 2),
     'steh' => floor($flight['duration_minutes'] / 60),
     'stem' => $flight['duration_minutes'] % 60,
-    // Add cargo/pax if we had it
 ];
 $dispatchUrl = $sbUrl . http_build_query($params);
-
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -75,9 +72,6 @@ $dispatchUrl = $sbUrl . http_build_query($params);
                 <h1 class="text-3xl font-bold text-gray-900">Briefing Operacional</h1>
                 <p class="text-gray-600"><?php echo $flight['flight_number']; ?> &bull;
                     <?php echo date('d M Y', strtotime($flight['flight_date'])); ?></p>
-            </div>
-            <div>
-
             </div>
         </div>
 
@@ -129,7 +123,6 @@ $dispatchUrl = $sbUrl . http_build_query($params);
                                 <span class="text-gray-600">Equipamento:</span>
                                 <span class="font-bold"><?php echo $flight['aircraft_type']; ?></span>
                             </div>
-                            <!-- Future: Add payload info here -->
                             <div class="bg-yellow-50 p-4 rounded border border-yellow-200 text-sm text-yellow-800">
                                 <i class="fas fa-exclamation-triangle mr-2"></i>
                                 Lembre-se de importar o plano de voo no simulador antes de iniciar o voo.

@@ -1,10 +1,12 @@
 <?php
 // db_connect.php - Database Connection
 
-$host = 'localhost';
-$dbname = 'virtual_airline_cms';
-$username = 'u378005298_yBbJN';
-$password = 'DrSVoavfBc'; // Default XAMPP password is empty
+require_once dirname(__DIR__, 2) . '/config_db.php';
+
+$host = DB_SERVERNAME;
+$dbname = DB_SKYCREW_NAME;
+$username = DB_PILOTOS_USER;
+$password = DB_PILOTOS_PASS;
 
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password);
@@ -12,7 +14,7 @@ try {
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
     die("Database Connection Failed: " . $e->getMessage() .
-        "<br>Please ensure you have created the database 'virtual_airline_cms' using the provided database.sql script.");
+        "<br>Please ensure you have created the database '$dbname' using the provided database.sql script.");
 }
 
 function getSystemSettings($pdo)
@@ -36,4 +38,3 @@ function getSystemSettings($pdo)
         ];
     }
 }
-?>

@@ -18,15 +18,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $stmt = $pdo->prepare("INSERT INTO pilot_preferences (pilot_id, day_of_week, start_time, end_time, max_daily_hours) VALUES (?, ?, ?, ?, ?)");
         
-        foreach ($_POST['pref'] as $day => $data) {
-            if (isset($data['active'])) {
-                $stmt->execute([
-                    $pilotId,
-                    $day,
-                    $data['start'],
-                    $data['end'],
-                    $data['max']
-                ]);
+        if (isset($_POST['pref']) && is_array($_POST['pref'])) {
+            foreach ($_POST['pref'] as $day => $data) {
+                if (isset($data['active'])) {
+                    $stmt->execute([
+                        $pilotId,
+                        $day,
+                        $data['start'],
+                        $data['end'],
+                        $data['max']
+                    ]);
+                }
             }
         }
 

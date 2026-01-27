@@ -96,7 +96,7 @@ $reports = $pdo->query("
                 class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Configurações</a>
         </nav>
         <div class="p-4 border-t border-gray-800"><a href="../logout.php"
-                class="block text-center text-sm text-gray-400">Sair</a></div>
+                class="block text-center text-sm text-gray-400 hover:text-white">Sair</a></div>
     </aside>
 
     <main class="flex-1 flex flex-col p-8 overflow-y-auto">
@@ -105,6 +105,12 @@ $reports = $pdo->query("
         <?php if (isset($success)): ?>
             <div class="bg-green-100 text-green-700 p-4 rounded mb-4">
                 <?php echo $success; ?>
+            </div>
+        <?php endif; ?>
+
+        <?php if (isset($error)): ?>
+            <div class="bg-red-100 text-red-700 p-4 rounded mb-4">
+                <?php echo $error; ?>
             </div>
         <?php endif; ?>
 

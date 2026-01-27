@@ -37,4 +37,3 @@ echo json_encode([
     'ready_at' => substr($readyAt, 0, 5),
     'schedule' => $schedule
 ]);
-?>

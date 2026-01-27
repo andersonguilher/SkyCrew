@@ -7,44 +7,6 @@ $success = '';
 $error = '';
 
 // Handle actions
-// Helper to generate registration
-function generateRegistration($pdo, $prefixesStr)
-{
-    $prefixes = array_map('trim', explode(',', $prefixesStr));
-    if (empty($prefixes) || $prefixes[0] == '')
-        $prefixes = ['PR'];
-
-    $restricted = ['PAN', 'TTT', 'VFR', 'FR', 'IMC', 'SOS'];
-    $letters = "ABCDEFGHIJKLMNOPQRSTUVWYZ"; // Start without X as per rules
-    $lettersWithX = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
-    $maxAttempts = 100;
-    for ($i = 0; $i < $maxAttempts; $i++) {
-        $prefix = $prefixes[array_rand($prefixes)];
-
-        // Brazilian pattern: 3 letters after prefix
-        $r1 = $letters[rand(0, strlen($letters) - 1)];
-        $r2 = $lettersWithX[rand(0, strlen($lettersWithX) - 1)];
-        $r3 = $lettersWithX[rand(0, strlen($lettersWithX) - 1)];
-        $regPart = $r1 . $r2 . $r3;
-
-        if (in_array($regPart, $restricted))
-            continue;
-
-        $full = $prefix . "-" . $regPart;
-
-        // Check if already exists
-        $stmt = $pdo->prepare("SELECT id FROM fleet WHERE registration = ?");
-        $stmt->execute([$full]);
-        if ($stmt->rowCount() == 0)
-            return $full;
-    }
-    return "TBD-" . rand(100, 999);
-}
-
-$settings = getSystemSettings($pdo);
-
-// Handle actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['add_aircraft'])) {
         $icao = strtoupper(trim($_POST['icao_code']));
@@ -79,9 +41,7 @@ $settings = getSystemSettings($pdo);
 
 <head>
     <meta charset="UTF-8">
-    <title>Gerenciar Frota -
-        <?php echo htmlspecialchars($settings['va_name']); ?>
-    </title>
+    <title>Gerenciar Frota - <?php echo htmlspecialchars($settings['va_name'] ?? 'SkyCrew'); ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/dist/css/all.min.css">
 </head>
@@ -91,7 +51,7 @@ $settings = getSystemSettings($pdo);
         <!-- Sidebar -->
         <aside class="w-64 bg-gray-900 text-white flex flex-col">
             <div class="h-16 flex items-center justify-center font-bold text-xl border-b border-gray-800">
-                <?php echo htmlspecialchars($settings['va_name']); ?>
+                SkyCrew Admin
             </div>
             <nav class="flex-1 px-4 py-6 space-y-2 text-sm text-gray-400">
                 <a href="dashboard.php" class="block py-2.5 px-4 rounded hover:bg-gray-800 transition">Painel</a>
@@ -99,7 +59,7 @@ $settings = getSystemSettings($pdo);
                 <a href="reports.php" class="block py-2.5 px-4 rounded hover:bg-gray-800 transition">Relatórios</a>
                 <a href="pilots.php" class="block py-2.5 px-4 rounded hover:bg-gray-800 transition">Pilotos</a>
                 <a href="flights.php" class="block py-2.5 px-4 rounded hover:bg-gray-800 transition">Voos</a>
-                <a href="fleet.php" class="block py-2.5 px-4 rounded bg-gray-800 text-white">Frota</a>
+                <a href="fleet.php" class="block py-2.5 px-4 rounded bg-gray-800 text-white font-bold">Frota</a>
                 <a href="settings.php" class="block py-2.5 px-4 rounded hover:bg-gray-800 transition">Configurações</a>
             </nav>
             <div class="p-4 border-t border-gray-800">
@@ -133,8 +93,7 @@ $settings = getSystemSettings($pdo);
             <div class="bg-white p-6 rounded shadow mb-8 border-l-4 border-indigo-500">
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="font-bold text-gray-700">Adicionar Nova Aeronave</h3>
-                    <span class="text-xs text-gray-400 font-medium uppercase tracking-wider">Apenas aeronaves
-                        compatíveis com SimBrief</span>
+                    <span class="text-xs text-gray-400 font-medium uppercase tracking-wider">Apenas aeronaves compatíveis com SimBrief</span>
                 </div>
 
                 <form method="POST" class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
@@ -223,7 +182,7 @@ $settings = getSystemSettings($pdo);
                         <?php endforeach; ?>
                         <?php if (empty($fleet)): ?>
                             <tr>
-                                <td colspan="4" class="px-6 py-8 text-center text-gray-400">Nenhuma aeronave cadastrada.
+                                <td colspan="5" class="px-6 py-8 text-center text-gray-400">Nenhuma aeronave cadastrada.
                                 </td>
                             </tr>
                         <?php endif; ?>
@@ -258,7 +217,7 @@ $settings = getSystemSettings($pdo);
 
     <script>
         let allSBAircraft = {};
-        const registrationPrefixes = "<?php echo $settings['fleet_registration_prefixes']; ?>".split(',');
+        const registrationPrefixes = "<?php echo $settings['fleet_registration_prefixes'] ?? 'PR,PT,PS,PP'; ?>".split(',');
 
         function generateJSMatricula() {
             const prefixes = registrationPrefixes.map(p => p.trim());
@@ -337,7 +296,6 @@ $settings = getSystemSettings($pdo);
             document.getElementById('add_icao').value = icao;
             document.getElementById('add_name').value = name;
 
-            // Set some default cruise speeds based on ICAO common patterns
             let speed = 450;
             if (icao.startsWith('C')) speed = 120; // Cessna
             if (icao.startsWith('A3') || icao.startsWith('B7') || icao.startsWith('E1')) speed = 450;

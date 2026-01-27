@@ -6,7 +6,7 @@ requireRole('admin');
 // Handle form submission
 $message = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $settings = [
+    $settingsToSave = [
         'va_name' => $_POST['va_name'] ?? '',
         'va_callsign' => $_POST['va_callsign'] ?? '',
         'va_logo_url' => $_POST['va_logo_url'] ?? '',
@@ -19,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         $stmt = $pdo->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
-        foreach ($settings as $key => $value) {
+        foreach ($settingsToSave as $key => $value) {
             $stmt->execute([$key, $value]);
         }
         $message = "Configurações atualizadas com sucesso!";
@@ -41,7 +41,6 @@ $settings = array_merge([
     'simbrief_api_key' => '',
     'fleet_registration_prefixes' => 'PR,PT,PP,PS,PU'
 ], $rows);
-
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -134,7 +133,7 @@ $settings = array_merge([
                                 value="<?php echo htmlspecialchars($settings['va_logo_url']); ?>"
                                 class="w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 py-2 px-3 border"
                                 placeholder="https://...">
-                            <?php if ($settings['va_logo_url']): ?>
+                            <?php if (!empty($settings['va_logo_url'])): ?>
                                 <img src="<?php echo htmlspecialchars($settings['va_logo_url']); ?>" alt="Logo Preview"
                                     class="h-10 w-auto border rounded p-1">
                             <?php endif; ?>

@@ -3,14 +3,16 @@ require_once '../db_connect.php';
 require_once '../includes/auth_session.php';
 requireRole('admin');
 
+$sysSettings = getSystemSettings($pdo);
+
 // 1. Fetch Financial Stats (All Time / This Month)
 $month = date('Y-m');
 
 // Revenue
 $totalRevenue = $pdo->query("SELECT SUM(revenue) FROM flight_reports WHERE status='Approved'")->fetchColumn() ?: 0;
-$monthRevenue = $pdo->prepare("SELECT SUM(revenue) FROM flight_reports WHERE status='Approved' AND DATE_FORMAT(submitted_at, '%Y-%m') = ?");
-$monthRevenue->execute([$month]);
-$monthRevenue = $monthRevenue->fetchColumn() ?: 0;
+$monthRevenueStmt = $pdo->prepare("SELECT SUM(revenue) FROM flight_reports WHERE status='Approved' AND DATE_FORMAT(submitted_at, '%Y-%m') = ?");
+$monthRevenueStmt->execute([$month]);
+$monthRevenue = $monthRevenueStmt->fetchColumn() ?: 0;
 
 // Expenses (Fuel)
 // Assume Fuel Price $2.50 / kg
@@ -56,22 +58,14 @@ $topRoutes = $pdo->query("
 ")->fetchAll();
 
 // Calculate Profit
-// Simplified: Revenue - Fuel - Pilot Pay (Estimate)
-// Pilot Pay estimate: 10% of revenue? Or sum of paychecks? 
-// Let's use a simple margin for now or try to sum pilot pay if we had historical paycheck records.
-// We don't have historical paychecks stored as values yet, only calculated on fly.
-// So let's estimate "Operating Profit" as Revenue - Fuel.
 $operatingProfit = $totalRevenue - $totalFuelCost;
-
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 
 <head>
     <meta charset="UTF-8">
-    <title>Financeiro -
-        <?php echo htmlspecialchars($sysSettings['va_name'] ?? 'SkyCrew'); ?>
-    </title>
+    <title>Financeiro - <?php echo htmlspecialchars($sysSettings['va_name'] ?? 'SkyCrew'); ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -83,7 +77,7 @@ $operatingProfit = $totalRevenue - $totalFuelCost;
     <!-- Sidebar -->
     <aside class="w-64 bg-gray-900 text-white flex flex-col">
         <div class="h-16 flex items-center justify-center font-bold text-xl border-b border-gray-800">
-            Kafly Admin
+            SkyCrew Admin
         </div>
         <nav class="flex-1 px-4 py-6 space-y-2">
             <a href="dashboard.php" class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Painel</a>
@@ -116,9 +110,7 @@ $operatingProfit = $totalRevenue - $totalFuelCost;
                     <div class="flex justify-between items-start">
                         <div>
                             <p class="text-xs font-bold text-gray-400 uppercase">Receita Total</p>
-                            <h3 class="text-2xl font-bold text-gray-800 mt-1">R$
-                                <?php echo number_format($totalRevenue, 2, ',', '.'); ?>
-                            </h3>
+                            <h3 class="text-2xl font-bold text-gray-800 mt-1">R$ <?php echo number_format($totalRevenue, 2, ',', '.'); ?></h3>
                         </div>
                         <div class="p-2 bg-green-100 rounded text-green-600">
                             <i class="fas fa-dollar-sign"></i>
@@ -131,9 +123,7 @@ $operatingProfit = $totalRevenue - $totalFuelCost;
                     <div class="flex justify-between items-start">
                         <div>
                             <p class="text-xs font-bold text-gray-400 uppercase">Lucro Operacional</p>
-                            <h3 class="text-2xl font-bold text-emerald-600 mt-1">R$
-                                <?php echo number_format($operatingProfit, 2, ',', '.'); ?>
-                            </h3>
+                            <h3 class="text-2xl font-bold text-emerald-600 mt-1">R$ <?php echo number_format($operatingProfit, 2, ',', '.'); ?></h3>
                             <p class="text-xs text-gray-400 mt-1">Receita - Combustível</p>
                         </div>
                         <div class="p-2 bg-emerald-100 rounded text-emerald-600">
@@ -147,9 +137,7 @@ $operatingProfit = $totalRevenue - $totalFuelCost;
                     <div class="flex justify-between items-start">
                         <div>
                             <p class="text-xs font-bold text-gray-400 uppercase">Passageiros</p>
-                            <h3 class="text-2xl font-bold text-gray-800 mt-1">
-                                <?php echo number_format($totalPax, 0, ',', '.'); ?>
-                            </h3>
+                            <h3 class="text-2xl font-bold text-gray-800 mt-1"><?php echo number_format($totalPax, 0, ',', '.'); ?></h3>
                         </div>
                         <div class="p-2 bg-blue-100 rounded text-blue-600">
                             <i class="fas fa-users"></i>
@@ -162,12 +150,8 @@ $operatingProfit = $totalRevenue - $totalFuelCost;
                     <div class="flex justify-between items-start">
                         <div>
                             <p class="text-xs font-bold text-gray-400 uppercase">Combustível</p>
-                            <h3 class="text-2xl font-bold text-gray-800 mt-1">
-                                <?php echo number_format($totalFuel, 0, ',', '.'); ?> kg
-                            </h3>
-                            <p class="text-xs text-red-400 mt-1">- R$
-                                <?php echo number_format($totalFuelCost, 2, 'k', '.'); ?>
-                            </p>
+                            <h3 class="text-2xl font-bold text-gray-800 mt-1"><?php echo number_format($totalFuel, 0, ',', '.'); ?> kg</h3>
+                            <p class="text-xs text-red-400 mt-1">- R$ <?php echo number_format($totalFuelCost, 2, ',', '.'); ?></p>
                         </div>
                         <div class="p-2 bg-orange-100 rounded text-orange-600">
                             <i class="fas fa-gas-pump"></i>
@@ -187,28 +171,30 @@ $operatingProfit = $totalRevenue - $totalFuelCost;
                 
                 <div class="bg-white p-6 rounded-lg shadow">
                      <h3 class="font-bold text-gray-700 mb-4">Top Rotas Lucrativas</h3>
-                     <table class="min-w-full text-sm">
-                         <thead class="bg-gray-50">
-                             <tr>
-                                 <th class="px-4 py-2 text-left">Voo</th>
-                                 <th class="px-4 py-2 text-right">Receita Média</th>
-                                 <th class="px-4 py-2 text-right">Ocupação (Méd)</th>
-                             </tr>
-                         </thead>
-                         <tbody>
-                            <?php if (count($topRoutes) > 0): ?>
-                                <?php foreach ($topRoutes as $route): ?>
-                                 <tr class="border-t">
-                                     <td class="px-4 py-2 font-bold text-gray-700"><?php echo $route['flight_number']; ?> <span class="text-xs font-normal text-gray-400">(<?php echo $route['flights_count']; ?> voos)</span></td>
-                                     <td class="px-4 py-2 text-right text-green-600 font-mono">R$ <?php echo number_format($route['avg_revenue'], 2, ',', '.'); ?></td>
-                                     <td class="px-4 py-2 text-right"><?php echo number_format($route['load_factor'], 1); ?>%</td>
+                     <div class="overflow-x-auto">
+                         <table class="min-w-full text-sm">
+                             <thead class="bg-gray-50">
+                                 <tr>
+                                     <th class="px-4 py-2 text-left">Voo</th>
+                                     <th class="px-4 py-2 text-right">Receita Média</th>
+                                     <th class="px-4 py-2 text-right">Ocupação (Méd)</th>
                                  </tr>
-                                <?php endforeach; ?>
-                            <?php else: ?>
-                                <tr><td colspan="3" class="px-4 py-8 text-center text-gray-400">Nenhum dado registrado ainda.</td></tr>
-                            <?php endif; ?>
-                         </tbody>
-                     </table>
+                             </thead>
+                             <tbody>
+                                <?php if (count($topRoutes) > 0): ?>
+                                    <?php foreach ($topRoutes as $route): ?>
+                                     <tr class="border-t">
+                                         <td class="px-4 py-2 font-bold text-gray-700"><?php echo $route['flight_number']; ?> <span class="text-xs font-normal text-gray-400">(<?php echo $route['flights_count']; ?> voos)</span></td>
+                                         <td class="px-4 py-2 text-right text-green-600 font-mono">R$ <?php echo number_format($route['avg_revenue'], 2, ',', '.'); ?></td>
+                                         <td class="px-4 py-2 text-right"><?php echo number_format($route['load_factor'], 1); ?>%</td>
+                                     </tr>
+                                    <?php endforeach; ?>
+                                <?php else: ?>
+                                    <tr><td colspan="3" class="px-4 py-8 text-center text-gray-400">Nenhum dado registrado ainda.</td></tr>
+                                <?php endif; ?>
+                             </tbody>
+                         </table>
+                     </div>
                 </div>
             </div>
 
@@ -233,7 +219,7 @@ $operatingProfit = $totalRevenue - $totalFuelCost;
                     {
                         label: 'Lucro Líquido',
                         data: <?php echo json_encode($chartData['profit']); ?>,
-                        borderColor: '#059669', // Darker Green
+                        borderColor: '#059669',
                         borderDash: [5, 5],
                         fill: false,
                         tension: 0.4

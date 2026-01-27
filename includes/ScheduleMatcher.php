@@ -154,4 +154,3 @@ class ScheduleMatcher
         $stmt->execute([$pilotId, $flightId, $date]);
     }
 }
-?>

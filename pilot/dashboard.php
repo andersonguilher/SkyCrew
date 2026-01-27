@@ -6,7 +6,6 @@ require_once '../includes/ScheduleMatcher.php';
 requireRole('pilot');
 $pilotId = getCurrentPilotId($pdo);
 $sysSettings = getSystemSettings($pdo); // Fetch Global Settings
-$sysSettings = getSystemSettings($pdo); // Fetch Global Settings
 
 // Initialize Matcher
 $start_date = date('Y-m-d');
@@ -21,7 +20,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate'])) {
     if ($count > 0) {
         $_SESSION['flash_msg'] = ["type" => "success", "text" => "Escala gerada com sucesso! $count voos atribuídos."];
     } else {
-        $_SESSION['flash_msg'] = ["type" => "error", "text" => "Nenhum voo encontrado. Verifique se há rotas saindo de sua base ({$pilot['current_base']}) compatíveis com suas preferências de horário."];
+        $_SESSION['flash_msg'] = ["type" => "error", "text" => "Nenhum voo encontrado. Verifique se há rotas saindo de sua base compatíveis com suas preferências de horário."];
     }
 
     header("Location: dashboard.php");
@@ -38,11 +37,13 @@ if (isset($_GET['action']) && isset($_GET['roster_id'])) {
     exit;
 }
 
-// Fetch Pilot Data
 // Fetch Pilot Data Enriched
 $stmt = $pdo->prepare("SELECT p.*, r.pay_rate, r.image_url as rank_image FROM pilots p LEFT JOIN ranks r ON p.rank = r.rank_name WHERE p.id = ?");
 $stmt->execute([$pilotId]);
 $pilot = $stmt->fetch();
+
+if (!$pilot)
+    die("Perfil de piloto não encontrado para este usuário.");
 
 // Calculate Progress to Next Rank
 $stmt = $pdo->prepare("SELECT * FROM ranks WHERE min_hours > ? ORDER BY min_hours ASC LIMIT 1");
@@ -56,9 +57,6 @@ if ($nextRank) {
     $rankProgress = 100; // Top rank
     $hoursNeeded = 0;
 }
-
-if (!$pilot)
-    die("Perfil de piloto não encontrado para este usuário.");
 
 $stmt = $pdo->prepare("SELECT COUNT(*) FROM pilot_preferences WHERE pilot_id = ?");
 $stmt->execute([$pilotId]);
@@ -192,7 +190,7 @@ $roster = $stmt->fetchAll();
                     <h3 class="text-gray-500 text-xs uppercase font-bold tracking-wider">Finanças</h3>
                     <p class="text-3xl font-black text-gray-800 mt-2">
                         <span
-                            class="text-lg align-top text-gray-500"><?php echo $sysSettings['currency_symbol']; ?></span><?php echo number_format($pilot['balance'], 2, ',', '.'); ?>
+                            class="text-lg align-top text-gray-500"><?php echo $sysSettings['currency_symbol']; ?></span><?php echo number_format($pilot['balance'] ?? 0, 2, ',', '.'); ?>
                     </p>
                     <p class="text-xs text-emerald-600 font-bold mt-1">
                         <i class="fas fa-arrow-up"></i>

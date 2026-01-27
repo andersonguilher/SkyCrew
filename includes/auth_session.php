@@ -37,4 +37,3 @@ function getCurrentPilotId($pdo)
     $stmt->execute([$_SESSION['user_id']]);
     return $stmt->fetchColumn();
 }
-?>

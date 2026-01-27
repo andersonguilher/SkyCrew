@@ -4,21 +4,26 @@ require_once '../includes/auth_session.php';
 requireRole('admin');
 
 // Fetch Stats
-$stats = [
-    'pilots' => $pdo->query("SELECT COUNT(*) FROM pilots")->fetchColumn(),
-    'flights' => $pdo->query("SELECT COUNT(*) FROM flights_master")->fetchColumn(),
-    'rosters_pending' => $pdo->query("SELECT COUNT(*) FROM roster_assignments WHERE status='Suggested'")->fetchColumn(),
-];
+try {
+    $stats = [
+        'pilots' => $pdo->query("SELECT COUNT(*) FROM pilots")->fetchColumn(),
+        'flights' => $pdo->query("SELECT COUNT(*) FROM flights_master")->fetchColumn(),
+        'rosters_pending' => $pdo->query("SELECT COUNT(*) FROM roster_assignments WHERE status='Suggested'")->fetchColumn(),
+    ];
 
-// Fetch recent rosters
-$recentRosters = $pdo->query("
-    SELECT r.*, p.name as pilot_name, f.flight_number, f.dep_icao, f.arr_icao 
-    FROM roster_assignments r
-    JOIN pilots p ON r.pilot_id = p.id
-    JOIN flights_master f ON r.flight_id = f.id
-    ORDER BY r.assigned_at DESC LIMIT 10
-")->fetchAll();
-
+    // Fetch recent rosters
+    $recentRosters = $pdo->query("
+        SELECT r.*, p.name as pilot_name, f.flight_number, f.dep_icao, f.arr_icao 
+        FROM roster_assignments r
+        JOIN pilots p ON r.pilot_id = p.id
+        JOIN flights_master f ON r.flight_id = f.id
+        ORDER BY r.assigned_at DESC LIMIT 10
+    ")->fetchAll();
+} catch (Exception $e) {
+    $stats = ['pilots' => 0, 'flights' => 0, 'rosters_pending' => 0];
+    $recentRosters = [];
+    $error = $e->getMessage();
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -28,6 +33,7 @@ $recentRosters = $pdo->query("
     <title>Painel Admin - SkyCrew</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -44,7 +50,7 @@ $recentRosters = $pdo->query("
                 SkyCrew Admin
             </div>
             <nav class="flex-1 px-4 py-6 space-y-2">
-                <a href="dashboard.php" class="block py-2.5 px-4 rounded bg-gray-800 text-white">Painel</a>
+                <a href="dashboard.php" class="block py-2.5 px-4 rounded bg-gray-800 text-white font-bold">Painel</a>
                 <a href="financials.php"
                     class="block py-2.5 px-4 rounded hover:bg-gray-800 transition text-gray-400">Financeiro</a>
                 <a href="reports.php"
@@ -83,8 +89,7 @@ $recentRosters = $pdo->query("
                     </div>
                     <div class="bg-white p-6 rounded-lg shadow border-l-4 border-yellow-500">
                         <div class="text-gray-500 text-sm uppercase font-semibold">Aprovações Pendentes</div>
-                        <div class="text-3xl font-bold text-gray-800 mt-2"><?php echo $stats['rosters_pending']; ?>
-                        </div>
+                        <div class="text-3xl font-bold text-gray-800 mt-2"><?php echo $stats['rosters_pending']; ?></div>
                     </div>
                 </div>
 
@@ -110,8 +115,7 @@ $recentRosters = $pdo->query("
                                         <td class="px-6 py-3 text-gray-800 font-medium">
                                             <?php echo htmlspecialchars($r['pilot_name']); ?>
                                         </td>
-                                        <td class="px-6 py-3 text-indigo-600 font-bold"><?php echo $r['flight_number']; ?>
-                                        </td>
+                                        <td class="px-6 py-3 text-indigo-600 font-bold"><?php echo $r['flight_number']; ?></td>
                                         <td class="px-6 py-3 text-gray-500"><?php echo $r['flight_date']; ?></td>
                                         <td class="px-6 py-3 text-gray-500">
                                             <?php echo $r['dep_icao'] . ' > ' . $r['arr_icao']; ?>
@@ -123,6 +127,7 @@ $recentRosters = $pdo->query("
                                                 'Suggested' => 'bg-yellow-100 text-yellow-800',
                                                 'Accepted' => 'bg-green-100 text-green-800',
                                                 'Rejected' => 'bg-red-100 text-red-800',
+                                                'Flown' => 'bg-blue-100 text-blue-800',
                                                 default => 'bg-gray-100 text-gray-800'
                                             };
                                             ?>">

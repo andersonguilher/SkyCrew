@@ -334,4 +334,3 @@ class PayrollSystem
         return implode("", $desc);
     }
 }
-?>

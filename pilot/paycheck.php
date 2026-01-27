@@ -60,6 +60,10 @@ function money($val)
             z-index: 0;
             white-space: nowrap; 
         }
+        @media print {
+            .no-print { display: none; }
+            body { background: white; padding: 0; }
+        }
     </style>
 </head>
 
@@ -68,7 +72,7 @@ function money($val)
     <div
         class="max-w-4xl w-full bg-white shadow-2xl rounded-sm overflow-hidden relative receipt-font text-sm border-t-8 border-gray-800">
 
-        <div class="watermark"><?php echo strtoupper($sysSettings['va_callsign']); ?></div>
+        <div class="watermark"><?php echo strtoupper($sysSettings['va_callsign'] ?? 'SKY'); ?></div>
 
         <!-- Header -->
         <div class="border-b-2 border-gray-800 p-8 flex justify-between items-start relative z-10">
@@ -80,28 +84,23 @@ function money($val)
                 <div class="bg-gray-800 text-white px-4 py-2 font-bold text-lg inline-block mb-2">
                     <?php echo date('M/Y'); ?>
                 </div>
-                <p class="text-gray-600 font-bold">Ref: 01/
-                    <?php echo date('m/Y'); ?> a
-                    <?php echo date('t/m/Y'); ?>
-                </p>
+                <p class="text-gray-600 font-bold">Ref: 01/<?php echo date('m/Y'); ?> a <?php echo date('t/m/Y'); ?></p>
             </div>
         </div>
 
         <!-- Employee Info -->
         <div class="p-6 bg-gray-50 border-b border-gray-200 grid grid-cols-2 gap-8 relative z-10">
             <div>
-                <p class="text-xs text-gray-400 uppercase font-bold text-gray-800">Funcionário</p>
+                <p class="text-xs text-gray-400 uppercase font-bold">Funcionário</p>
                 <p class="text-lg font-bold">
                     <?php echo strtoupper($pilotName); ?>
                 </p>
-                <p class="text-gray-600">ID:
-                    <?php echo str_pad($pilotId, 6, '0', STR_PAD_LEFT); ?>
-                </p>
+                <p class="text-gray-600">ID: <?php echo str_pad($pilotId, 6, '0', STR_PAD_LEFT); ?></p>
             </div>
             <div class="text-right">
                 <p class="text-xs text-gray-400 uppercase font-bold">Cargo / Patente</p>
                 <p class="text-lg font-bold text-indigo-900">
-                    <?php echo strtoupper($paycheck['rank']); ?>
+                    <?php echo strtoupper($paycheck['rank'] ?? 'CADET'); ?>
                 </p>
                 <p class="text-gray-600">Base: Fixa</p>
             </div>
@@ -123,9 +122,7 @@ function money($val)
                     <!-- Earnings -->
                     <tr>
                         <td class="py-2">001</td>
-                        <td class="py-2 font-bold">Salário Base (
-                            <?php echo $paycheck['rank']; ?>)
-                        </td>
+                        <td class="py-2 font-bold">Salário Base (<?php echo $paycheck['rank'] ?? 'Cadet'; ?>)</td>
                         <td class="py-2 text-center">30d</td>
                         <td class="py-2 text-right">
                             <?php echo money($paycheck['base_salary']); ?>
