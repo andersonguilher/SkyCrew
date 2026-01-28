@@ -19,8 +19,10 @@ $current_page = basename($_SERVER['PHP_SELF']);
         body { font-family: 'Outfit', sans-serif; margin: 0; padding: 0; overflow: hidden; background: #0c0e17; color: white; height: 100vh; }
         .immersive-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; background: radial-gradient(circle at top right, #1e1b4b 0%, #0c0e17 100%); }
         .glass-panel { background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4); }
-        .top-bar { height: 60px; margin: 20px 20px 10px 20px; border-radius: 16px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; flex-shrink: 0; }
-        .nav-button { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #94a3b8; transition: all 0.3s; text-decoration: none; }
+        .top-bar { height: 80px; margin: 20px 20px 10px 20px; border-radius: 16px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; flex-shrink: 0; }
+        .nav-button { min-width: 60px; height: 60px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #94a3b8; transition: all 0.3s; text-decoration: none; padding: 5px; }
+        .nav-button i { font-size: 1.2rem; }
+        .nav-label { font-size: 0.65rem; font-weight: 600; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
         .nav-button:hover, .nav-button.active { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
         .btn-glow { background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); box-shadow: 0 0 20px rgba(99, 102, 241, 0.3); border: none; color: white; font-weight: 700; border-radius: 12px; cursor: pointer; transition: all 0.3s; }
         .btn-glow:hover { transform: translateY(-2px); box-shadow: 0 0 30px rgba(99, 102, 241, 0.5); }
@@ -49,17 +51,47 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <div class="h-6 w-px bg-white/10 mx-2"></div>
                 <nav class="flex gap-2">
                     <?php if ($is_admin): ?>
-                        <a href="dashboard.php" class="nav-button <?php echo $current_page == 'dashboard.php' ? 'active' : ''; ?>" title="Painel"><i class="fas fa-chart-pie"></i></a>
-                        <a href="flights.php" class="nav-button <?php echo $current_page == 'flights.php' ? 'active' : ''; ?>" title="Voos"><i class="fas fa-route"></i></a>
-                        <a href="fleet.php" class="nav-button <?php echo $current_page == 'fleet.php' ? 'active' : ''; ?>" title="Frota"><i class="fas fa-plane"></i></a>
-                        <a href="pilots.php" class="nav-button <?php echo $current_page == 'pilots.php' ? 'active' : ''; ?>" title="Pilotos"><i class="fas fa-users"></i></a>
-                        <a href="financials.php" class="nav-button <?php echo $current_page == 'financials.php' ? 'active' : ''; ?>" title="Financeiro"><i class="fas fa-wallet"></i></a>
-                        <a href="settings.php" class="nav-button <?php echo $current_page == 'settings.php' ? 'active' : ''; ?>" title="Configurações"><i class="fas fa-cog"></i></a>
+                        <a href="dashboard.php" class="nav-button <?php echo $current_page == 'dashboard.php' ? 'active' : ''; ?>" title="Painel">
+                            <i class="fas fa-chart-pie"></i>
+                            <span class="nav-label">Painel</span>
+                        </a>
+                        <a href="flights.php" class="nav-button <?php echo $current_page == 'flights.php' ? 'active' : ''; ?>" title="Voos">
+                            <i class="fas fa-route"></i>
+                            <span class="nav-label">Voos</span>
+                        </a>
+                        <a href="fleet.php" class="nav-button <?php echo $current_page == 'fleet.php' ? 'active' : ''; ?>" title="Frota">
+                            <i class="fas fa-plane"></i>
+                            <span class="nav-label">Frota</span>
+                        </a>
+                        <a href="pilots.php" class="nav-button <?php echo $current_page == 'pilots.php' ? 'active' : ''; ?>" title="Pilotos">
+                            <i class="fas fa-users"></i>
+                            <span class="nav-label">Pilotos</span>
+                        </a>
+                        <a href="financials.php" class="nav-button <?php echo $current_page == 'financials.php' ? 'active' : ''; ?>" title="Financeiro">
+                            <i class="fas fa-wallet"></i>
+                            <span class="nav-label">Financeiro</span>
+                        </a>
+                        <a href="settings.php" class="nav-button <?php echo $current_page == 'settings.php' ? 'active' : ''; ?>" title="Configurações">
+                            <i class="fas fa-cog"></i>
+                            <span class="nav-label">Config</span>
+                        </a>
                     <?php else: ?>
-                        <a href="dashboard.php" class="nav-button <?php echo $current_page == 'dashboard.php' ? 'active' : ''; ?>" title="Painel"><i class="fas fa-home"></i></a>
-                        <a href="briefing.php" class="nav-button <?php echo $current_page == 'briefing.php' ? 'active' : ''; ?>" title="Briefing"><i class="fas fa-file-alt"></i></a>
-                        <a href="paycheck.php" class="nav-button <?php echo $current_page == 'paycheck.php' ? 'active' : ''; ?>" title="Pagamentos"><i class="fas fa-wallet"></i></a>
-                        <a href="preferences.php" class="nav-button <?php echo $current_page == 'preferences.php' ? 'active' : ''; ?>" title="Preferências"><i class="fas fa-sliders-h"></i></a>
+                        <a href="dashboard.php" class="nav-button <?php echo $current_page == 'dashboard.php' ? 'active' : ''; ?>" title="Painel">
+                            <i class="fas fa-home"></i>
+                            <span class="nav-label">Início</span>
+                        </a>
+                        <a href="briefing.php" class="nav-button <?php echo $current_page == 'briefing.php' ? 'active' : ''; ?>" title="Briefing">
+                            <i class="fas fa-file-alt"></i>
+                            <span class="nav-label">Briefing</span>
+                        </a>
+                        <a href="paycheck.php" class="nav-button <?php echo $current_page == 'paycheck.php' ? 'active' : ''; ?>" title="Pagamentos">
+                            <i class="fas fa-wallet"></i>
+                            <span class="nav-label">Pagamentos</span>
+                        </a>
+                        <a href="preferences.php" class="nav-button <?php echo $current_page == 'preferences.php' ? 'active' : ''; ?>" title="Preferências">
+                            <i class="fas fa-sliders-h"></i>
+                            <span class="nav-label">Prefs</span>
+                        </a>
                     <?php endif; ?>
                 </nav>
             </div>
