@@ -25,7 +25,24 @@ try {
     ");
 
     $routes = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    echo json_encode($routes);
+
+    // Get fleet with current locations
+    $fleetStmt = $pdo->query("
+        SELECT 
+            f.registration, 
+            f.icao_code, 
+            f.current_icao,
+            a.latitude_deg as lat,
+            a.longitude_deg as lon
+        FROM fleet f
+        LEFT JOIN airports a ON f.current_icao = a.ident
+    ");
+    $fleet = $fleetStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    echo json_encode([
+        'routes' => $routes,
+        'fleet' => $fleet
+    ]);
 } catch (Exception $e) {
     echo json_encode(['error' => $e->getMessage()]);
 }

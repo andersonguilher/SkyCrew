@@ -63,7 +63,11 @@ try {
         'distance' => round($dist),
         'duration' => round($minutes),
         'origin' => $dCoord['ident'],
-        'dest' => $aCoord['ident']
+        'dest' => $aCoord['ident'],
+        'dep_lat' => $dCoord['latitude_deg'],
+        'dep_lon' => $dCoord['longitude_deg'],
+        'arr_lat' => $aCoord['latitude_deg'],
+        'arr_lon' => $aCoord['longitude_deg']
     ]);
 
 } catch (Exception $e) {
