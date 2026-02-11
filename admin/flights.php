@@ -258,7 +258,7 @@ $extraHead = '
         .plane-visible { /* Removed opacity override for JS control */ }
         .plane-highlight { color: #fbbf24 !important; filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.6)) !important; scale: 1.15; z-index: 1000 !important; pointer-events: none !important; }
         .plane-node { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; transition: scale 0.3s ease-out, filter 0.3s; pointer-events: none !important; }
-        .plane-svg { width: 100%; height: 100%; fill: currentColor; }
+        .plane-svg { width: 100%; height: 100%; fill: currentColor; transform-origin: center; }
         .leaflet-tile { transition: opacity 0.4s ease !important; }
 
         /* Map Filters */
@@ -808,7 +808,8 @@ include '../includes/layout_header.php';
                     dep_icao: x.dep_icao,
                     arr_icao: x.arr_icao,
                     dep_time: x.dep_time ? x.dep_time.substring(0, 5) : '',
-                    arr_time: x.arr_time ? x.arr_time.substring(0, 5) : ''
+                    arr_time: x.arr_time ? x.arr_time.substring(0, 5) : '',
+                    roster_status: x.roster_status
                 };
             }
         });
@@ -851,8 +852,10 @@ include '../includes/layout_header.php';
             fitMapToRoutes();
         }
 
-        checkAvailability();
-        updateMapFilters();
+        // Re-highlight selection if it exists after map refresh
+        if (selectedFlight && mapObjects[selectedFlight]) {
+            highlightRoute(selectedFlight, true, '#ffffff', true);
+        }
     }
     
     let airportMarkers = [];
@@ -893,7 +896,7 @@ include '../includes/layout_header.php';
 
         // If deselecting current
         if (selectedFlight === fnum) {
-            resetRoute(fnum);
+            resetRoute(fnum, true, true);
             row.classList.remove('bg-white/10', 'border-indigo-500');
             row.classList.add('border-transparent');
             selectedFlight = null;
@@ -906,7 +909,7 @@ include '../includes/layout_header.php';
 
         // If changing selection
         if (selectedFlight) {
-            resetRoute(selectedFlight);
+            resetRoute(selectedFlight, true, true);
             if (selectedRow) {
                 selectedRow.classList.remove('bg-white/10', 'border-indigo-500');
                 selectedRow.classList.add('border-transparent');
@@ -998,6 +1001,9 @@ include '../includes/layout_header.php';
                 if (obj.progress < 0.05) obj.progress = 0.05; 
             }
             
+            // Ensure plane is visible immediately if highlighted
+            obj.plane.setOpacity(1); 
+            
             const el = obj.plane.getElement();
             if (el) {
                 obj.plane.setZIndexOffset(1000); 
@@ -1017,7 +1023,7 @@ include '../includes/layout_header.php';
                 obj.markers.forEach(m => m.setStyle({ color: color, radius: 6, weight: 2 }));
             }
 
-            if (useDetailed) {
+            if (useDetailed && obj.roster_status === 'Accepted') {
                 if (!obj.endpointMarkers) {
                     const iconStyle = "color: white; font-size: 11px; font-weight: 800; white-space: nowrap; text-shadow: 0 0 4px #000, 0 0 8px #000; text-align: center; line-height: 1.1;";
                     
@@ -1079,7 +1085,10 @@ include '../includes/layout_header.php';
         }
     }
 
-    function resetRoute(fnum, updateMarkers = true) {
+    function resetRoute(fnum, updateMarkers = true, force = false) {
+        // Prevent resetting if it's the currently selected flight in the table
+        if (selectedFlight === fnum && !force) return;
+
         // Add debounce to prevent flickering
         if (resetTimers[fnum]) clearTimeout(resetTimers[fnum]);
         
@@ -1143,21 +1152,24 @@ include '../includes/layout_header.php';
         
         for (let i = 0; i < dists.length; i++) {
             if (runningDist + dists[i] >= targetDist) {
-                // Determine segment progress
                 const segPct = (targetDist - runningDist) / dists[i];
                 const p1 = getVal(path[i]);
                 const p2 = getVal(path[i+1]);
                 
-                const lat = p1.lat + (p2.lat - p1.lat) * segPct;
-                const lng = p1.lng + (p2.lng - p1.lng) * segPct;
+                // INTERPOLATE IN PIXEL SPACE TO STAY ON THE LINE
+                // Mercator distortion means linear lat/lng interpolation doesn't match a straight line on map
+                const p1_p = map.latLngToLayerPoint(p1);
+                const p2_p = map.latLngToLayerPoint(p2);
+                const p_p = L.point(
+                    p1_p.x + (p2_p.x - p1_p.x) * segPct,
+                    p1_p.y + (p2_p.y - p1_p.y) * segPct
+                );
+                const pt = map.layerPointToLatLng(p_p);
                 
-                // Calculate angle
-                const y = Math.sin(p2.lng * Math.PI/180 - p1.lng * Math.PI/180) * Math.cos(p2.lat * Math.PI/180);
-                const x = Math.cos(p1.lat * Math.PI/180) * Math.sin(p2.lat * Math.PI/180) -
-                          Math.sin(p1.lat * Math.PI/180) * Math.cos(p2.lat * Math.PI/180) * Math.cos(p2.lng * Math.PI/180 - p1.lng * Math.PI/180);
-                const brng = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+                // Calculate visual angle on map (atan2(dx, -dy) because screen Y is inverted)
+                const angle = (Math.atan2(p2_p.x - p1_p.x, -(p2_p.y - p1_p.y)) * 180 / Math.PI);
                 
-                return { lat, lng, angle: brng };
+                return { lat: pt.lat, lng: pt.lng, angle: angle };
             }
             runningDist += dists[i];
         }
@@ -1185,16 +1197,30 @@ include '../includes/layout_header.php';
                         if (el) el.style.transform = `rotate(${pt.angle}deg)`;
                         
                     } else {
-                        // Simple Direct Logic
-                        const lat = obj.p1[0] + (obj.p2[0] - obj.p1[0]) * obj.progress;
-                        const lng = obj.p1[1] + (obj.p2[1] - obj.p1[1]) * obj.progress;
-                        obj.plane.setLatLng([lat, lng]);
+                        // Interpolate in pixel space for simple direct routes too
+                        const p1_p = map.latLngToLayerPoint(obj.p1);
+                        const p2_p = map.latLngToLayerPoint(obj.p2);
+                        const p_p = L.point(
+                            p1_p.x + (p2_p.x - p1_p.x) * obj.progress,
+                            p1_p.y + (p2_p.y - p1_p.y) * obj.progress
+                        );
+                        const pt = map.layerPointToLatLng(p_p);
+                        obj.plane.setLatLng(pt);
+                        
+                        const angle = (Math.atan2(p2_p.x - p1_p.x, -(p2_p.y - p1_p.y)) * 180 / Math.PI);
+                        const el = obj.plane.getElement()?.querySelector('.plane-svg');
+                        if (el) el.style.transform = `rotate(${angle}deg)`;
                     }
 
-                    // Fade In / Out Logic
+                    // Fade In / Out Logic (Only for background non-selected flights)
                     let op = 1;
-                    if (obj.progress < 0.15) op = obj.progress / 0.15;
-                    else if (obj.progress > 0.85) op = (1 - obj.progress) / 0.15;
+                    const isSelected = (selectedFlight === fnum);
+                    
+                    if (!isSelected) {
+                        if (obj.progress < 0.15) op = obj.progress / 0.15;
+                        else if (obj.progress > 0.85) op = (1 - obj.progress) / 0.15;
+                    }
+                    
                     obj.plane.setOpacity(op);
                 }
             }
@@ -1375,7 +1401,13 @@ include '../includes/layout_header.php';
 
     document.addEventListener('DOMContentLoaded', () => { 
         initMap(); 
-        checkAvailability();
+        
+        // Initial data sync
+        setTimeout(() => {
+            checkAvailability();
+            updateMapFilters();
+        }, 1000); 
+
         if (document.getElementById('dep_time').value && document.getElementById('dur').value) {
             calcArrTime();
         }
