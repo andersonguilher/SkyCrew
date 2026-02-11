@@ -154,6 +154,11 @@ include '../includes/layout_header.php';
                                         $depLocal = clone $depUtc;
                                         $depLocal->setTimezone($pilotTz);
 
+                                        $arrUtc = clone $depUtc;
+                                        $arrUtc->modify('+' . $flight['duration_minutes'] . ' minutes');
+                                        $arrLocal = clone $arrUtc;
+                                        $arrLocal->setTimezone($pilotTz);
+
                                         $days = [
                                             'Sun' => 'Domingo', 'Mon' => 'Segunda-feira', 'Tue' => 'Terça-feira', 
                                             'Wed' => 'Quarta-feira', 'Thu' => 'Quinta-feira', 'Fri' => 'Sexta-feira', 'Sat' => 'Sábado'
@@ -178,17 +183,15 @@ include '../includes/layout_header.php';
                                     </div>
                                     <div>
                                         <h4 class="font-bold text-white"><?php echo $flight['aircraft_type']; ?></h4>
-                                        <span class="text-[9px] text-slate-500 font-bold uppercase tracking-tighter">Ikaros Dispatch System</span>
+                                        <span class="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Ikaros Dispatch System</span>
                                     </div>
                                 </div>
 
                                 <div class="flex-1 flex items-center justify-center gap-4">
                                     <div class="text-center">
                                         <p class="text-xl font-bold text-white"><?php echo $flight['dep_icao']; ?></p>
-                                        <span class="text-[10px] text-slate-500 font-mono">
-                                            <?php 
-                                            echo substr($flight['dep_time'], 0, 5) . 'Z';
-                                            ?>
+                                        <span class="text-sm font-bold text-slate-200 font-mono">
+                                            <?php echo $depLocal->format('H:i'); ?> <span class="text-[10px] text-slate-500">LCL</span>
                                         </span>
                                     </div>
                                     <div class="flex-1 max-w-[120px] flex flex-col items-center gap-1 px-2 relative">
@@ -197,17 +200,14 @@ include '../includes/layout_header.php';
                                                 <i class="fas fa-plane text-xs"></i>
                                             </div>
                                         </div>
-                                        <span class="text-[9px] font-bold text-slate-600 uppercase tracking-widest mt-1">
+                                        <span class="text-xs font-black text-slate-400 uppercase tracking-widest mt-1">
                                             <?php echo floor($flight['duration_minutes']/60); ?>h <?php echo $flight['duration_minutes']%60; ?>m
                                         </span>
                                     </div>
                                     <div class="text-center">
                                         <p class="text-xl font-bold text-white"><?php echo $flight['arr_icao']; ?></p>
-                                        <span class="text-[10px] text-slate-500 font-mono">
-                                            <?php 
-                                            // Handle Arrival Local Time for accuracy (though card header usually enough)
-                                            echo substr($flight['arr_time'], 0, 5) . 'Z';
-                                            ?>
+                                        <span class="text-sm font-bold text-slate-200 font-mono">
+                                            <?php echo $arrLocal->format('H:i'); ?> <span class="text-[10px] text-slate-500">LCL</span>
                                         </span>
                                     </div>
                                 </div>
