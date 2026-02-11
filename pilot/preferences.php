@@ -117,7 +117,7 @@ include '../includes/layout_header.php';
                         </div>
                         
                         <div class="flex items-center gap-3">
-                            <span class="text-[9px] text-slate-500 font-bold uppercase">Limite Diário:</span>
+                            <span class="text-[9px] text-slate-500 font-bold uppercase">Tempo de Voo:</span>
                             <div class="flex items-center bg-black/40 rounded-xl border border-white/5 px-3">
                                 <input type="number" name="pref[<?php echo $idx; ?>][max]" value="<?php echo $val['max_daily_hours']; ?>" min="1" max="14" class="bg-transparent text-white text-sm font-bold w-12 py-2 focus:outline-none">
                                 <span class="text-[10px] text-slate-600 font-bold">H</span>

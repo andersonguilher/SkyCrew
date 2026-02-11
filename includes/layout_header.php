@@ -41,6 +41,7 @@ if (!$is_admin && isset($pdo)) {
         .btn-glow:hover { transform: translateY(-2px); box-shadow: 0 0 30px rgba(99, 102, 241, 0.5); }
         .form-input { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 12px; padding: 10px 14px; font-size: 0.875rem; width: 100%; transition: all 0.3s; }
         .form-input:focus { background: rgba(255,255,255,0.1); border-color: #6366f1; outline: none; box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2); }
+        .form-input option { background-color: #0c0e17; color: white; }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
