@@ -83,7 +83,8 @@ if (isset($_GET['ofp_id'])) {
                     $fixes[] = [
                         'lat' => floatval($fix['pos_lat']), 
                         'lng' => floatval($fix['pos_long']),
-                        'name' => $fix['ident'] ?? ''
+                        'name' => $fix['ident'] ?? '',
+                        'type' => $fix['type'] ?? 'WPT'
                     ];
                 }
             }
@@ -330,12 +331,12 @@ include '../includes/layout_header.php';
             <div class="grid grid-cols-2 gap-4">
                 <div class="space-y-2 relative">
                     <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Origem</label>
-                    <input type="text" id="dep" name="dep_icao" class="form-input uppercase" placeholder="ICAO" maxlength="4" onkeyup="searchAirport(this)" value="<?php echo htmlspecialchars($sb_dep ?: ($_POST['dep_icao'] ?? '')); ?>" required>
+                    <input type="text" id="dep" name="dep_icao" class="form-input uppercase" placeholder="ICAO" maxlength="4" onkeyup="searchAirport(this); drawPlannedRoute();" value="<?php echo htmlspecialchars($sb_dep ?: ($_POST['dep_icao'] ?? '')); ?>" required>
                     <div id="dep_list" class="absolute left-0 right-0 top-full mt-1 glass-panel rounded-xl overflow-hidden z-50 hidden border border-white/20"></div>
                 </div>
                 <div class="space-y-2 relative">
                     <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Destino</label>
-                    <input type="text" id="arr" name="arr_icao" class="form-input uppercase" placeholder="ICAO" maxlength="4" onkeyup="searchAirport(this)" value="<?php echo htmlspecialchars($sb_arr ?: ($_POST['arr_icao'] ?? '')); ?>" required>
+                    <input type="text" id="arr" name="arr_icao" class="form-input uppercase" placeholder="ICAO" maxlength="4" onkeyup="searchAirport(this); drawPlannedRoute();" value="<?php echo htmlspecialchars($sb_arr ?: ($_POST['arr_icao'] ?? '')); ?>" required>
                     <div id="arr_list" class="absolute left-0 right-0 top-full mt-1 glass-panel rounded-xl overflow-hidden z-50 hidden border border-white/20"></div>
                 </div>
             </div>
@@ -483,7 +484,7 @@ include '../includes/layout_header.php';
 <script src="../SimBrief_APIv1/simbrief.apiv1.js"></script>
 <script>
     var api_dir = '../SimBrief_APIv1/';
-    let debounceTimer, map, mapObjects = {}, currentBounds = null;
+    let debounceTimer, map, mapObjects = {}, currentBounds = null, plannedRouteLayer = null;
     let isAnimating = false;
     let airportCoordinates = {}; // Lookup for airport positions
     let allRouteData = []; // Raw data from API
@@ -592,6 +593,50 @@ include '../includes/layout_header.php';
         setTimeout(() => document.getElementById('sbManualFallback').classList.remove('hidden'), 10000); // Show fallback after 10s
     }
 
+    function getAeronauticalIcon(type, color = '#ffffff') {
+        type = (type || 'WPT').toUpperCase();
+        let svg = '';
+        let size = [12, 12];
+        let anchor = [6, 6];
+
+        if (type === 'VOR' || type === 'VORTAC' || type === 'TACAN') {
+            svg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="${color}" stroke="black" stroke-width="1.5">
+                    <path d="M12 2L20.66 7V17L12 22L3.34 17V7L12 2Z" />
+                    <circle cx="12" cy="12" r="3" fill="black" />
+                  </svg>`;
+        } else if (type === 'VOR-DME' || type === 'VORDME') {
+            svg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="${color}" stroke="black" stroke-width="1.5">
+                    <rect x="2" y="2" width="20" height="20" />
+                    <path d="M12 4L18.92 8V16L12 20L5.08 16V8L12 4Z" fill="black" />
+                    <circle cx="12" cy="12" r="2" fill="${color}" />
+                  </svg>`;
+        } else if (type === 'NDB') {
+            svg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2">
+                    <circle cx="12" cy="12" r="2" fill="${color}" stroke="none" />
+                    <circle cx="12" cy="12" r="5" />
+                    <circle cx="12" cy="12" r="9" />
+                  </svg>`;
+        } else if (type === 'INT' || type === 'FIX' || type === 'REPORTING') {
+            svg = `<svg width="10" height="10" viewBox="0 0 24 24" fill="${color}" stroke="black" stroke-width="1">
+                    <path d="M12 2L22 20H2L12 2Z" />
+                  </svg>`;
+            size = [10, 10]; anchor = [5, 5];
+        } else {
+            // Default Waypoint WPT
+            svg = `<svg width="10" height="10" viewBox="0 0 24 24" fill="${color}" stroke="black" stroke-width="1">
+                    <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z" />
+                  </svg>`;
+            size = [10, 10]; anchor = [5, 5];
+        }
+
+        return L.divIcon({
+            className: '',
+            html: `<div style="width: ${size[0]}px; height: ${size[1]}px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 0 2px rgba(0,0,0,0.8)); overflow: visible;">${svg}</div>`,
+            iconSize: size,
+            iconAnchor: anchor
+        });
+    }
+
     function initMap() {
         map = L.map('routeMap', { 
             zoomControl: false,
@@ -623,9 +668,114 @@ include '../includes/layout_header.php';
         map.getPane('tooltipPane').style.pointerEvents = 'none'; // Ensure tooltips don't steal focus
         
         routeLayerGroup.addTo(map);
+        plannedRouteLayer = L.layerGroup().addTo(map); // Draft Route Layer
         loadMapRoutes();
         if (typeof planeAnim !== 'undefined') cancelAnimationFrame(planeAnim);
         animatePlanes();
+    }
+
+    // New function to draw the current planning route
+    function drawPlannedRoute() {
+        if (!map) return;
+        plannedRouteLayer.clearLayers();
+
+        const dep = document.getElementById('dep').value.trim().toUpperCase();
+        const arr = document.getElementById('arr').value.trim().toUpperCase();
+        const waypointsInput = document.getElementsByName('route_waypoints')[0];
+        const waypointsVal = waypointsInput ? waypointsInput.value : '';
+        
+        // Try to get coordinates if missing and field is 4 chars
+        if (dep.length === 4 && !airportCoordinates[dep]) {
+            fetch(`../api/search_airports.php?term=${dep}`)
+                .then(r => r.json())
+                .then(data => {
+                    const match = data.find(x => x.value === dep);
+                    if (match && match.lat && match.lng) {
+                        airportCoordinates[dep] = [parseFloat(match.lat), parseFloat(match.lng)];
+                        drawPlannedRoute();
+                    }
+                });
+        }
+        if (arr.length === 4 && !airportCoordinates[arr]) {
+            fetch(`../api/search_airports.php?term=${arr}`)
+                .then(r => r.json())
+                .then(data => {
+                    const match = data.find(x => x.value === arr);
+                    if (match && match.lat && match.lng) {
+                        airportCoordinates[arr] = [parseFloat(match.lat), parseFloat(match.lng)];
+                        drawPlannedRoute();
+                    }
+                });
+        }
+
+        if (!dep || !arr || !airportCoordinates[dep] || !airportCoordinates[arr]) return;
+
+        const p1 = airportCoordinates[dep];
+        const p2 = airportCoordinates[arr];
+        
+        let path = [p1, p2];
+        let isDetailed = false;
+
+        if (waypointsVal && waypointsVal !== 'null') {
+            try {
+                const wps = JSON.parse(waypointsVal);
+                if (Array.isArray(wps) && wps.length > 0) {
+                    path = wps.map(p => [p.lat, p.lng]);
+                    
+                    // Ensure the polyline starts at Origin and ends at Destination
+                    if (map.distance(path[0], p1) > 200) path.unshift(p1);
+                    if (map.distance(path[path.length - 1], p2) > 200) path.push(p2);
+                    
+                    isDetailed = true;
+
+                    // Draw Waypoint Markers for the planned route
+                    wps.forEach(pt => {
+                        if (!pt.lat || !pt.lng) return;
+                        const wpIcon = getAeronauticalIcon(pt.type, '#fbbf24');
+                        L.marker([pt.lat, pt.lng], {
+                            icon: wpIcon,
+                            pane: 'lines',
+                            interactive: false
+                        }).addTo(plannedRouteLayer)
+                        .bindTooltip(pt.name, {
+                            permanent: true,
+                            direction: 'top',
+                            className: 'waypoint-tooltip',
+                            offset: [0, -6]
+                        });
+                    });
+                }
+            } catch(e) { console.error("Error parsing waypoints", e); }
+        }
+
+        // Draw Line
+        L.polyline(path, {
+            color: isDetailed ? '#6366f1' : '#fbbf24', 
+            weight: 3,
+            opacity: 0.8,
+            dashArray: isDetailed ? null : '8, 12',
+            interactive: false,
+            pane: 'lines'
+        }).addTo(plannedRouteLayer);
+
+        // Draw Endpoints
+        const markerStyle = { radius: 6, color: '#fbbf24', weight: 2, fillColor: '#0c0e17', fillOpacity: 1, interactive: false, pane: 'hubs' };
+        
+        const m1 = L.circleMarker(p1, markerStyle).addTo(plannedRouteLayer);
+        m1.bindTooltip(dep, { permanent: true, direction: 'top', className: 'glass-tooltip', offset: [0, -10] });
+        
+        const m2 = L.circleMarker(p2, markerStyle).addTo(plannedRouteLayer);
+        m2.bindTooltip(arr, { permanent: true, direction: 'top', className: 'glass-tooltip', offset: [0, -10] });
+
+        // Auto-Fit if not manually roaming
+        if (!selectedFlight) {
+            const bounds = L.latLngBounds(path);
+            map.flyToBounds(bounds, { 
+                paddingTopLeft: [420, 100],
+                paddingBottomRight: [60, 120],
+                duration: 1.5 
+            });
+        }
     }
 
     async function loadMapRoutes() {
@@ -767,7 +917,12 @@ include '../includes/layout_header.php';
                 if (x.route_waypoints) {
                     try {
                         const wps = JSON.parse(x.route_waypoints);
-                        if (Array.isArray(wps) && wps.length > 0) detailedPath = wps;
+                        if (Array.isArray(wps) && wps.length > 0) {
+                            detailedPath = wps.map(p => [p.lat, p.lng]);
+                            // Ensure connection to airports
+                            if (map.distance(detailedPath[0], p1) > 200) detailedPath.unshift(p1);
+                            if (map.distance(detailedPath[detailedPath.length - 1], p2) > 200) detailedPath.push(p2);
+                        }
                     } catch(e) {}
                 }
 
@@ -1057,12 +1212,7 @@ include '../includes/layout_header.php';
                          // Skip if coordinates are invalid
                          if (!pt.lat || !pt.lng) return null;
                          
-                         const wpIcon = L.divIcon({
-                            className: '',
-                            html: '<div style="width: 5px; height: 5px; background: #fff; transform: rotate(45deg); box-shadow: 0 0 4px rgba(0,0,0,0.8); border: 1px solid rgba(0,0,0,0.5);"></div>',
-                            iconSize: [5, 5],
-                            iconAnchor: [2.5, 2.5]
-                         });
+                         const wpIcon = getAeronauticalIcon(pt.type, color);
 
                          return L.marker([pt.lat, pt.lng], {
                              icon: wpIcon,
@@ -1246,7 +1396,13 @@ include '../includes/layout_header.php';
                             const d = document.createElement('div');
                             d.className = 'px-4 py-2 hover:bg-white/10 cursor-pointer text-[11px] text-slate-300 border-b border-white/5 last:border-0';
                             d.textContent = x.label;
-                            d.onclick = () => { input.value = x.value; list.classList.add('hidden'); checkAvailability(); };
+                            d.onclick = () => { 
+                                input.value = x.value; 
+                                list.classList.add('hidden'); 
+                                if (x.lat && x.lng) airportCoordinates[x.value] = [parseFloat(x.lat), parseFloat(x.lng)];
+                                checkAvailability(); 
+                                drawPlannedRoute();
+                            };
                             list.appendChild(d);
                         });
                     } else list.classList.add('hidden');
@@ -1404,8 +1560,15 @@ include '../includes/layout_header.php';
         
         // Initial data sync
         setTimeout(() => {
+            // Inject SimBrief coordinates into the lookup if they were just loaded
+            <?php if (isset($sb_data)): ?>
+                airportCoordinates['<?php echo $sb_dep; ?>'] = [<?php echo $sb_data['origin']['pos_lat']; ?>, <?php echo $sb_data['origin']['pos_long']; ?>];
+                airportCoordinates['<?php echo $sb_arr; ?>'] = [<?php echo $sb_data['destination']['pos_lat']; ?>, <?php echo $sb_data['destination']['pos_long']; ?>];
+            <?php endif; ?>
+            
             checkAvailability();
             updateMapFilters();
+            drawPlannedRoute(); // Draw initial or SimBrief route
         }, 1000); 
 
         if (document.getElementById('dep_time').value && document.getElementById('dur').value) {

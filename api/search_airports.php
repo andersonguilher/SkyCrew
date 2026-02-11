@@ -12,7 +12,7 @@ if (strlen($term) < 2) {
 
 try {
     $stmt = $pdo->prepare("
-        SELECT ident, name, municipality, iso_country 
+        SELECT ident, name, municipality, iso_country, latitude_deg, longitude_deg
         FROM airports 
         WHERE ident LIKE ? OR municipality LIKE ? 
         ORDER BY CASE WHEN ident LIKE ? THEN 1 ELSE 2 END 
@@ -30,7 +30,9 @@ try {
     foreach ($results as $row) {
         $data[] = [
             'value' => $row['ident'],
-            'label' => "{$row['ident']} - {$row['municipality']} ({$row['name']})"
+            'label' => "{$row['ident']} - {$row['municipality']} ({$row['name']})",
+            'lat' => $row['latitude_deg'],
+            'lng' => $row['longitude_deg']
         ];
     }
 
