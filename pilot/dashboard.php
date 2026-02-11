@@ -62,12 +62,12 @@ $stmt = $pdo->prepare("SELECT COUNT(*) FROM pilot_preferences WHERE pilot_id = ?
 $stmt->execute([$pilotId]);
 $hasPreferences = $stmt->fetchColumn() > 0;
 
-// Fetch Roster (excluding rejected flights)
+// Fetch Roster
 $stmt = $pdo->prepare("
     SELECT r.id as roster_id, r.flight_date, r.status, f.* 
     FROM roster_assignments r 
     JOIN flights_master f ON r.flight_id = f.id 
-    WHERE r.pilot_id = ? AND r.status != 'Rejected'
+    WHERE r.pilot_id = ? 
     ORDER BY r.flight_date ASC, f.dep_time ASC
 ");
 $stmt->execute([$pilotId]);
@@ -182,15 +182,13 @@ include '../includes/layout_header.php';
                             </div>
                             <div class="p-6 flex flex-col md:flex-row items-center gap-8">
                                 <div class="flex items-center gap-4 shrink-0">
-                                    <div class="relative group">
-                                        <div class="absolute inset-0 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-2xl blur opacity-30 group-hover:opacity-50 transition-opacity"></div>
-                                        <div class="relative px-4 py-3 rounded-2xl bg-gradient-to-br from-indigo-600/30 to-purple-600/30 border border-indigo-400/30 backdrop-blur-sm shadow-lg shadow-indigo-500/20">
-                                            <span class="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 to-purple-300 font-mono tracking-wider"><?php echo $flight['flight_number']; ?></span>
-                                        </div>
+                                    <div class="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center flex-col border border-white/10">
+                                        <span class="text-[9px] text-slate-500 font-bold leading-none uppercase"><?php echo substr($flight['flight_number'], 0, 2); ?></span>
+                                        <span class="text-sm font-bold text-indigo-400"><?php echo substr($flight['flight_number'], 2); ?></span>
                                     </div>
                                     <div>
                                         <h4 class="font-bold text-white"><?php echo $flight['aircraft_type']; ?></h4>
-                                        <span class="text-[9px] text-slate-500 font-bold uppercase tracking-tighter">Dispatch System</span>
+                                        <span class="text-[9px] text-slate-500 font-bold uppercase tracking-tighter">Ikaros Dispatch System</span>
                                     </div>
                                 </div>
 

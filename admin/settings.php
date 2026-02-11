@@ -10,8 +10,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'va_name' => $_POST['va_name'] ?? '',
         'va_callsign' => $_POST['va_callsign'] ?? '',
         'va_logo_url' => $_POST['va_logo_url'] ?? '',
-        'daily_idle_cost' => $_POST['daily_idle_cost'] ?? '',
-        'currency_symbol' => $_POST['currency_symbol'] ?? '',
+        'hotel_daily_rate' => $_POST['hotel_daily_rate'] ?? '100.00',
+        'breakfast_cost' => $_POST['breakfast_cost'] ?? '15.00',
+        'lunch_cost' => $_POST['lunch_cost'] ?? '20.00',
+        'dinner_cost' => $_POST['dinner_cost'] ?? '15.00',
+        'currency_symbol' => $_POST['currency_symbol'] ?? 'R$',
         'simbrief_username' => $_POST['simbrief_username'] ?? '',
         'simbrief_api_key' => $_POST['simbrief_api_key'] ?? '',
         'fleet_registration_prefixes' => $_POST['fleet_registration_prefixes'] ?? ''
@@ -20,7 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $stmt = $pdo->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
         foreach ($settingsToSave as $key => $value) {
-            $stmt->execute([$key, $value]);
+            $finalValue = ($key === 'va_callsign') ? strtoupper($value) : $value;
+            $stmt->execute([$key, $finalValue]);
         }
         $message = "Configurações atualizadas!";
     } catch (Exception $e) {
@@ -35,7 +39,10 @@ $settings = array_merge([
     'va_name' => 'SkyCrew Virtual Airline',
     'va_callsign' => 'SKY',
     'va_logo_url' => '',
-    'daily_idle_cost' => '150.00',
+    'hotel_daily_rate' => '100.00',
+    'breakfast_cost' => '15.00',
+    'lunch_cost' => '20.00',
+    'dinner_cost' => '15.00',
     'currency_symbol' => 'R$',
     'simbrief_username' => '',
     'simbrief_api_key' => '',
@@ -115,12 +122,24 @@ include '../includes/layout_header.php';
                 </div>
                 <div class="p-8 grid grid-cols-2 gap-6">
                     <div class="space-y-2">
-                        <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Moeda</label>
+                        <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Moeda (Símbolo)</label>
                         <input type="text" name="currency_symbol" value="<?php echo htmlspecialchars($settings['currency_symbol']); ?>" class="form-input" placeholder="R$">
                     </div>
                     <div class="space-y-2">
-                        <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Custo Diário Ocioso</label>
-                        <input type="number" step="0.01" name="daily_idle_cost" value="<?php echo htmlspecialchars($settings['daily_idle_cost']); ?>" class="form-input">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Diária Hotel</label>
+                        <input type="number" step="0.01" name="hotel_daily_rate" value="<?php echo htmlspecialchars($settings['hotel_daily_rate']); ?>" class="form-input">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Custo Desjejum</label>
+                        <input type="number" step="0.01" name="breakfast_cost" value="<?php echo htmlspecialchars($settings['breakfast_cost']); ?>" class="form-input">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Custo Almoço</label>
+                        <input type="number" step="0.01" name="lunch_cost" value="<?php echo htmlspecialchars($settings['lunch_cost']); ?>" class="form-input">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Custo Janta</label>
+                        <input type="number" step="0.01" name="dinner_cost" value="<?php echo htmlspecialchars($settings['dinner_cost']); ?>" class="form-input">
                     </div>
                 </div>
             </div>
@@ -142,6 +161,7 @@ include '../includes/layout_header.php';
                     <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Static API Key (Opcional)</label>
                     <input type="password" name="simbrief_api_key" value="<?php echo htmlspecialchars($settings['simbrief_api_key'] ?? ''); ?>" class="form-input" placeholder="••••••••">
                 </div>
+
             </div>
         </div>
 

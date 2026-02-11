@@ -22,7 +22,9 @@
 
 /**********************************************************************/
 
-$simbrief_api_key = 'PASTEHERE'; //Paste your API key here
+require_once '../db_connect.php';
+$settings = getSystemSettings($pdo);
+$simbrief_api_key = $settings['simbrief_api_key'] ?? '';
 
 /**********************************************************************/
 
@@ -48,20 +50,19 @@ if (isset($_GET['js_url_check']))
 	
 	$varname = isset($_GET['var']) && isset($_GET['var']) != '' ? trim($_GET['var']) : 'phpvar';
 	
-	$url = 'http://www.simbrief.com/ofp/flightplans/xml/'.$_GET['js_url_check'].'.xml';
+	$ofp_id = $_GET['js_url_check'];
+	$url = 'https://www.simbrief.com/ofp/flightplans/xml/'.$ofp_id.'.xml';
 	
-	$fh = get_headers($url);
-	if ($fh[0] !== 'HTTP/1.1 200 OK')
-		{
-		$resp = false;
-		}
-	else
-		{
-		$resp = true;
-		}
-		
-	print 'var ' . $varname . ' = "' . ($resp ? 'true' : 'false') . '";';
-	
+	$ch = curl_init($url);
+	curl_setopt($ch, CURLOPT_NOBODY, true);
+	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+	curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+	curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+	curl_exec($ch);
+	$code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+	curl_close($ch);
+
+	print 'var ' . $varname . ' = "' . ($code === 200 ? 'true' : 'false') . '";';
 	die();
 	}
 	

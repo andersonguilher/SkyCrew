@@ -1,8 +1,99 @@
 <?php
 require_once '../db_connect.php';
 require_once '../includes/auth_session.php';
+require_once '../SimBrief_APIv1/simbrief.apiv1.php';
 requireRole('admin');
 $settings = getSystemSettings($pdo);
+
+// Fast detection for SimBrief Iframe Redirection
+?>
+<script>
+    if (window.self !== window.top && window.location.search.includes('ofp_id=')) {
+        const ofpId = new URLSearchParams(window.location.search).get('ofp_id');
+        if (ofpId) {
+            // Force parent to redirect immediately
+            window.parent.location.href = window.location.href;
+            document.documentElement.innerHTML = '<body style="background:#0c0e17; color:white; display:flex; align-items:center; justify-content:center; height:100vh; font-family:sans-serif; margin:0; overflow:hidden;"><div>SINCRONIZANDO...</div></body>';
+            window.stop();
+        }
+    }
+</script>
+<?php
+// Initialize form values
+$sb_dep = '';
+$sb_arr = '';
+$sb_route = '';
+$sb_dur = '';
+$sb_fuel = '';
+$sb_dur = '';
+$sb_fuel = '';
+$sb_pax = '';
+$sb_waypoints = null;
+
+$edit_id = $_GET['edit_id'] ?? null;
+$edit_flight = null;
+if ($edit_id) {
+    $stmt = $pdo->prepare("SELECT * FROM flights_master WHERE id = ?");
+    $stmt->execute([$edit_id]);
+    $edit_flight = $stmt->fetch();
+    
+    if ($edit_flight) {
+        // Pre-fill from DB
+        $sb_dep = $edit_flight['dep_icao'];
+        $sb_arr = $edit_flight['arr_icao'];
+        $sb_route = $edit_flight['route'];
+        $sb_dur = $edit_flight['duration_minutes'];
+        $sb_out = substr($edit_flight['dep_time'], 0, 5);
+        $sb_fuel = $edit_flight['estimated_fuel'];
+        $sb_pax = $edit_flight['passenger_count'];
+        $sb_waypoints = $edit_flight['route_waypoints'];
+    }
+}
+
+// Handle SimBrief Callback
+if (isset($_GET['ofp_id'])) {
+    $sb = new SimBrief($_GET['ofp_id']);
+    if ($sb->ofp_avail) {
+        $sb_data = $sb->ofp_array;
+        
+        // Debug logging for the received OFP data (optional, can be disabled)
+        // file_put_contents('../api/simbrief_debug.log', "\nOFP ID Processed: " . $_GET['ofp_id'] . "\nData: " . json_encode($sb_data) . "\n", FILE_APPEND);
+
+        $sb_dep = $sb_data['origin']['icao_code'] ?? '';
+        $sb_arr = $sb_data['destination']['icao_code'] ?? '';
+        $sb_route = $sb_data['general']['route'] ?? '';
+        
+        // Try multiple keys for duration (SimBrief XML can vary or be nested differently)
+        $raw_dur = $sb_data['times']['est_time_enroute'] ?? $sb_data['general']['route_duration'] ?? 0;
+        $sb_dur = floor(intval($raw_dur) / 60);
+        
+        // Extract departure time from SimBrief (usually UTC)
+        $sb_out = isset($sb_data['times']['sched_out']) ? date('H:i', intval($sb_data['times']['sched_out'])) : '';
+
+
+        // Extract Fuel and Pax
+        $sb_fuel = $sb_data['fuel']['plan_ramp'] ?? 0;
+        $sb_pax = $sb_data['weights']['pax_count'] ?? 0;
+
+        // Extract Waypoints (Real Route)
+        $fixes = [];
+        if (isset($sb_data['navlog']['fix'])) {
+            foreach ($sb_data['navlog']['fix'] as $fix) {
+                if (isset($fix['pos_lat']) && isset($fix['pos_long'])) {
+                    $fixes[] = [
+                        'lat' => floatval($fix['pos_lat']), 
+                        'lng' => floatval($fix['pos_long']),
+                        'name' => $fix['ident'] ?? ''
+                    ];
+                }
+            }
+        }
+        $sb_waypoints = !empty($fixes) ? json_encode($fixes) : null;
+    }
+}
+
+$selected_ac = $_GET['aircraft_id'] ?? ($edit_flight['aircraft_id'] ?? '');
+$passed_flight_number = $_GET['fn'] ?? ($edit_flight['flight_number'] ?? '');
 
 // Handle actions
 $success = '';
@@ -10,7 +101,7 @@ $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['add_flight'])) {
-        $prefix = $settings['va_callsign'] ?: 'VA';
+        $prefix = strtoupper($settings['va_callsign'] ?: 'VA');
         $rawNum = preg_replace('/\D/', '', $_POST['flight_number']);
         $fnum = $prefix . $rawNum;
         $dep = strtoupper(trim($_POST['dep_icao']));
@@ -20,6 +111,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $aircraft_id = $_POST['aircraft_id'];
         $dur = $_POST['duration'];
         $route = $_POST['route'] ?? null;
+        $fuel = $_POST['estimated_fuel'] ?? 0;
+        $pax = $_POST['passenger_count'] ?? 0;
+        $waypoints = $_POST['route_waypoints'] ?? null;
+        if (trim($waypoints) === '') $waypoints = null;
 
         // Get ICAO for compat
         $acStmt = $pdo->prepare("SELECT icao_code FROM fleet WHERE id = ?");
@@ -35,8 +130,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = "O voo $fnum já existe!";
         } else {
             try {
-                $stmt = $pdo->prepare("INSERT INTO flights_master (flight_number, aircraft_id, dep_icao, arr_icao, dep_time, arr_time, aircraft_type, duration_minutes, route) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                $stmt->execute([$fnum, $aircraft_id, $dep, $arr, $dtime, $atime, $ac, $dur, $route]);
+                $stmt = $pdo->prepare("INSERT INTO flights_master (flight_number, aircraft_id, dep_icao, arr_icao, dep_time, arr_time, aircraft_type, duration_minutes, route, estimated_fuel, passenger_count, route_waypoints) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt->execute([$fnum, $aircraft_id, $dep, $arr, $dtime, $atime, $ac, $dur, $route, $fuel, $pax, $waypoints]);
                 $success = "Voo $fnum adicionado com sucesso.";
             } catch (PDOException $e) {
                 $error = "Erro ao salvar: " . $e->getMessage();
@@ -49,6 +144,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $success = "Voo excluído com sucesso.";
         } catch (PDOException $e) {
             $error = "Erro: " . $e->getMessage();
+        }
+    } elseif (isset($_POST['update_flight'])) {
+        $id = $_POST['update_id'];
+        $prefix = strtoupper($settings['va_callsign'] ?: 'VA');
+        $rawNum = preg_replace('/\D/', '', $_POST['flight_number']);
+        $fnum = $prefix . $rawNum;
+        $dep = strtoupper(trim($_POST['dep_icao']));
+        $arr = strtoupper(trim($_POST['arr_icao']));
+        $dtime = $_POST['dep_time'];
+        $atime = $_POST['arr_time'];
+        $aircraft_id = $_POST['aircraft_id'];
+        $dur = $_POST['duration'];
+        $route = $_POST['route'] ?? null;
+        $fuel = $_POST['estimated_fuel'] ?? 0;
+        $pax = $_POST['passenger_count'] ?? 0;
+        $waypoints = $_POST['route_waypoints'] ?? null;
+        if (trim($waypoints) === '') $waypoints = null;
+
+        // Get ICAO for compat
+        $acStmt = $pdo->prepare("SELECT icao_code FROM fleet WHERE id = ?");
+        $acStmt->execute([$aircraft_id]);
+        $acData = $acStmt->fetch();
+        $ac = $acData['icao_code'] ?? 'Unknown';
+
+        try {
+            $stmt = $pdo->prepare("UPDATE flights_master SET flight_number=?, aircraft_id=?, dep_icao=?, arr_icao=?, dep_time=?, arr_time=?, aircraft_type=?, duration_minutes=?, route=?, estimated_fuel=?, passenger_count=?, route_waypoints=? WHERE id=?");
+            $stmt->execute([$fnum, $aircraft_id, $dep, $arr, $dtime, $atime, $ac, $dur, $route, $fuel, $pax, $waypoints, $id]);
+            $success = "Voo $fnum atualizado com sucesso.";
+            // Clear edit mode
+            $edit_flight = null;
+            $edit_id = null;
+            // Reset form vars
+             $sb_dep = ''; $sb_arr = ''; $sb_route = ''; $sb_dur = ''; $sb_out = ''; $sb_fuel = ''; $sb_pax = ''; $passed_flight_number = ''; $selected_ac = '';
+        } catch (PDOException $e) {
+            $error = "Erro ao atualizar: " . $e->getMessage();
         }
     }
 }
@@ -68,7 +198,7 @@ $fleet = $pdo->query("
     ORDER BY f.icao_code, f.registration
 ")->fetchAll();
 
-$prefix = $settings['va_callsign'] ?: 'VA';
+$prefix = strtoupper($settings['va_callsign'] ?: 'VA');
 $maxNum = 1000;
 foreach ($flights as $f) {
     if (preg_match('/^' . preg_quote($prefix, '/') . '(\d+)$/', $f['flight_number'], $matches)) {
@@ -87,45 +217,47 @@ $extraHead = '
         #routeMap { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
         .leaflet-container { background: #0c0e17 !important; }
         .leaflet-vignette { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; box-shadow: inset 0 0 150px rgba(0,0,0,0.8); }
-        .sidebar-panel { width: 380px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; position: relative; z-index: 10; }
-        .bottom-shelf { height: 260px; flex-shrink: 0; display: flex; flex-direction: column; margin-top: auto; transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1); position: relative; z-index: 10; pointer-events: auto; }
-        .bottom-shelf.minimized { height: 48px; }
-        .shelf-toggle { cursor: pointer; padding: 4px 8px; border-radius: 6px; background: rgba(255,255,255,0.05); }
-        .shelf-toggle:hover { background: rgba(255,255,255,0.1); }
-        .glass-tooltip { background: rgba(15, 23, 42, 0.9) !important; border: 1px solid rgba(255, 255, 255, 0.2) !important; color: white !important; font-weight: bold !important; font-family: "Outfit", sans-serif !important; border-radius: 6px !important; box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important; z-index: 2000 !important; }
-        .top-bar { position: relative; z-index: 100; }
-        .leaflet-tooltip-top:before, .leaflet-tooltip-bottom:before, .leaflet-tooltip-left:before, .leaflet-tooltip-right:before { border: none !important; }
+        .sidebar-panel { width: 380px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; }
+        .bottom-shelf { height: 260px; flex-shrink: 0; display: flex; flex-direction: column; margin-top: auto; transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        .bottom-shelf.minimized { height: 56px; }
         .route-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; padding: 12px; transition: all 0.3s; }
         .route-card:hover { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.2); }
         .suggest-card { background: rgba(99, 102, 241, 0.1); border: 1px dashed #6366f1; border-radius: 12px; padding: 10px; text-align: center; cursor: pointer; transition: all 0.2s; }
         .suggest-card:hover { background: rgba(99, 102, 241, 0.2); transform: scale(1.02); }
+        select.form-input option { background: #1e1b4b; color: white; }
+
+        /* SimBrief Modal Styles */
+        #sbModal { backdrop-filter: blur(8px); transition: all 0.3s ease; }
+        .sb-modal-content { 
+            transform: scale(0.9); opacity: 0; transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%);
+        }
+        #sbModal.show .sb-modal-content { transform: scale(1); opacity: 1; }
         
-        @keyframes dash {
-            to { stroke-dashoffset: -20; }
+        .sb-iframe-container {
+            background: #000;
+            position: relative;
+            border-radius: 0 0 24px 24px;
+            overflow: hidden;
+            height: 400px;
         }
-        .route-line { transition: all 0.5s; stroke-dasharray: 10, 10; }
-        .route-line-active { 
-            stroke: #fbbf24 !important; 
-            stroke-width: 3 !important; 
-            stroke-opacity: 1 !important; 
-            animation: dash 1s linear infinite; 
-            stroke-dasharray: 10, 5;
-            z-index: 1000 !important;
-        }
-        .airport-marker {
-            background: #818cf8;
-            border: 2px solid white;
-            border-radius: 50%;
-            cursor: pointer;
-            box-shadow: 0 0 15px rgba(129, 140, 248, 0.7);
-            transition: all 0.3s;
-        }
-        .airport-marker:hover {
-            background: #fbbf24;
-            transform: scale(1.5);
-            z-index: 1000 !important;
-            box-shadow: 0 0 20px #fbbf24;
-        }
+        #sbIframe { width: 100%; height: 100%; border: none; }
+        .glass-tooltip { background: rgba(12, 14, 23, 0.9) !important; border: 1px solid rgba(255, 255, 255, 0.2) !important; color: white !important; font-weight: bold !important; font-size: 11px !important; border-radius: 6px !important; backdrop-filter: blur(8px); box-shadow: 0 4px 15px rgba(0,0,0,0.6); pointer-events: none; }
+        .waypoint-tooltip { background: transparent !important; border: none !important; box-shadow: none !important; color: rgba(255, 255, 255, 0.9) !important; font-family: monospace !important; font-weight: bold !important; font-size: 10px !important; letter-spacing: 0.5px; text-shadow: 0 0 3px #000, 0 0 5px #000; padding: 0 !important; margin-top: -2px !important; }
+        .leaflet-tooltip-top:before { border-top-color: rgba(12, 14, 23, 0.9) !important; }
+        .waypoint-tooltip.leaflet-tooltip-top:before { display: none !important; }
+        .airport-node { cursor: pointer !important; pointer-events: auto !important; }
+        .leaflet-pane.leaflet-hubs-pane { pointer-events: none; }
+        .leaflet-pane.leaflet-hubs-pane path { pointer-events: auto; }
+
+        /* UI Event Passthrough Fix */
+        .page-container, .content-area { pointer-events: none; }
+        .top-bar, .sidebar-panel, .bottom-shelf, .glass-panel, input, button, select, textarea { pointer-events: auto; }
+
+        .plane-visible { /* Removed opacity override for JS control */ }
+        .plane-highlight { color: #fbbf24 !important; filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.6)) !important; scale: 1.15; z-index: 1000 !important; pointer-events: none !important; }
+        .plane-node { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; transition: scale 0.3s ease-out, filter 0.3s; pointer-events: none !important; }
+        .plane-svg { width: 100%; height: 100%; fill: currentColor; }
     </style>
 ';
 
@@ -136,27 +268,23 @@ include '../includes/layout_header.php';
 
 <div class="sidebar-panel glass-panel rounded-3xl z-10">
     <div class="p-6 border-b border-white/10 shrink-0">
-        <h2 class="text-lg font-bold text-white flex items-center gap-2"><i class="fas fa-plus-circle text-indigo-400"></i> Despacho Operacional</h2>
-        <p class="text-[10px] text-slate-400 uppercase tracking-widest mt-1">Planejamento de Voo</p>
+        <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            <i class="fas fa-<?php echo $edit_flight ? 'edit' : 'plus-circle'; ?> text-indigo-400"></i> 
+            <?php echo $edit_flight ? 'Editar Voo' : 'Despacho Operacional'; ?>
+        </h2>
+        <p class="text-[10px] text-slate-400 uppercase tracking-widest mt-1">
+            <?php echo $edit_flight ? 'Atualizando ' . $edit_flight['flight_number'] : 'Planejamento de Voo'; ?>
+            <?php if ($edit_flight): ?>
+                <a href="flights.php" class="text-indigo-400 hover:text-white ml-2 underline">Cancelar</a>
+            <?php endif; ?>
+        </p>
     </div>
 
     <div class="flex-1 overflow-y-auto p-6 space-y-6">
         <form method="POST" id="dispatchForm" class="space-y-5">
             <div class="space-y-2">
                 <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Voo</label>
-                <input type="text" name="flight_number" value="<?php echo $prefix . $nextNum; ?>" class="form-input font-bold" required>
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div class="space-y-2 relative">
-                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Origem</label>
-                    <input type="text" id="dep" name="dep_icao" class="form-input uppercase" placeholder="ICAO" maxlength="4" onkeyup="searchAirport(this)" onchange="updatePreview()" required>
-                    <div id="dep_list" class="absolute left-0 right-0 top-full mt-1 glass-panel rounded-xl overflow-hidden z-50 hidden border border-white/20"></div>
-                </div>
-                <div class="space-y-2 relative">
-                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Destino</label>
-                    <input type="text" id="arr" name="arr_icao" class="form-input uppercase" placeholder="ICAO" maxlength="4" onkeyup="searchAirport(this)" onchange="updatePreview()" required>
-                    <div id="arr_list" class="absolute left-0 right-0 top-full mt-1 glass-panel rounded-xl overflow-hidden z-50 hidden border border-white/20"></div>
-                </div>
+                <input type="text" name="flight_number" value="<?php echo $passed_flight_number ?: ($prefix . $nextNum); ?>" class="form-input font-bold" required>
             </div>
             <div class="space-y-2">
                 <div class="flex justify-between items-center"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Aeronave</label>
@@ -164,71 +292,155 @@ include '../includes/layout_header.php';
                 <select name="aircraft_id" id="ac" class="form-input" required onchange="checkAvailability(true)">
                     <option value="">Selecione...</option>
                     <?php foreach ($fleet as $f): ?>
-                            <option value="<?php echo $f['id']; ?>" data-location="<?php echo $f['last_location']; ?>">
-                                <?php echo $f['registration']; ?> (<?php echo $f['icao_code']; ?>)
+                            <option value="<?php echo $f['id']; ?>" data-location="<?php echo $f['last_location']; ?>" <?php echo ($selected_ac == $f['id']) ? 'selected' : ''; ?>>
+                                <?php echo $f['registration']; ?> (<?php echo $f['icao_code']; ?>) - <?php echo $f['last_location']; ?>
                             </option>
                     <?php endforeach; ?>
                 </select>
-                <div id="ac_status" class="text-[10px] ml-1 hidden"></div>
+                <div id="ac_status" class="text-[9px] font-mono text-emerald-400 ml-1 hidden mt-1"></div>
+                
+                <div id="ac_schedule" class="mt-2 p-3 bg-white/5 rounded-xl border border-white/10 hidden">
+                    <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                        <i class="fas fa-clock text-indigo-400"></i> Linha do Tempo (Hoje)
+                    </p>
+                    <div id="schedule_list" class="space-y-1"></div>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div class="space-y-2 relative">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Origem</label>
+                    <input type="text" id="dep" name="dep_icao" class="form-input uppercase" placeholder="ICAO" maxlength="4" onkeyup="searchAirport(this)" value="<?php echo htmlspecialchars($sb_dep ?: ($_POST['dep_icao'] ?? '')); ?>" required>
+                    <div id="dep_list" class="absolute left-0 right-0 top-full mt-1 glass-panel rounded-xl overflow-hidden z-50 hidden border border-white/20"></div>
+                </div>
+                <div class="space-y-2 relative">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Destino</label>
+                    <input type="text" id="arr" name="arr_icao" class="form-input uppercase" placeholder="ICAO" maxlength="4" onkeyup="searchAirport(this)" value="<?php echo htmlspecialchars($sb_arr ?: ($_POST['arr_icao'] ?? '')); ?>" required>
+                    <div id="arr_list" class="absolute left-0 right-0 top-full mt-1 glass-panel rounded-xl overflow-hidden z-50 hidden border border-white/20"></div>
+                </div>
             </div>
             <div class="space-y-2">
                 <div class="flex justify-between items-center mr-1">
                     <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Plano de Rota</label>
                     <button type="button" onclick="fetchSimBrief()" class="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 uppercase flex items-center gap-1 transition">
-                        <i class="fas fa-cloud-download-alt"></i> SimBrief
+                        <i class="fas fa-bolt text-yellow-400"></i> Auto-Completar via SimBrief
                     </button>
                 </div>
-                <textarea id="route" name="route" class="form-input h-20 text-[11px] font-mono resize-none" placeholder="Gerado automaticamente ou manual..."></textarea>
+                <textarea id="route" name="route" class="form-input h-20 text-[11px] font-mono resize-none" placeholder="Gerado automaticamente ou manual..."><?php echo htmlspecialchars($sb_route ?: ($_POST['route'] ?? '')); ?></textarea>
             </div>
             <div class="grid grid-cols-3 gap-3">
                 <div class="space-y-2"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Saída (Z)</label>
-                <input type="time" id="dep_time" name="dep_time" class="form-input p-1" onchange="calcArrTime()" required></div>
+                <input type="time" id="dep_time" name="dep_time" class="form-input p-1" onchange="calcArrTime()" value="<?php echo htmlspecialchars($sb_out ?? ''); ?>" required></div>
                 <div class="space-y-2"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">EET</label>
-                <input type="number" id="dur" name="duration" class="form-input p-1" onchange="calcArrTime()" required></div>
+                <input type="number" id="dur" name="duration" class="form-input p-1" onchange="calcArrTime()" value="<?php echo htmlspecialchars($sb_dur ?: ($_POST['duration'] ?? '')); ?>" required></div>
                 <div class="space-y-2"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Chegada (Z)</label>
-                <input type="time" id="arr_time" name="arr_time" class="form-input p-1 bg-white/10" readonly required></div>
+                <input type="time" id="arr_time" name="arr_time" class="form-input p-1 bg-white/5 pointer-events-none opacity-50" readonly required tabindex="-1"></div>
             </div>
-            <button type="submit" name="add_flight" class="btn-glow w-full py-4 mt-4 uppercase tracking-widest text-sm">Criar Voo</button>
+            <div class="grid grid-cols-2 gap-3">
+                <div class="space-y-2"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Combustível Est. (Kg)</label>
+                <input type="number" name="estimated_fuel" value="<?php echo htmlspecialchars($sb_fuel ?: ($_POST['estimated_fuel'] ?? '')); ?>" class="form-input p-1"></div>
+                <div class="space-y-2"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Passageiros</label>
+                <input type="number" name="passenger_count" value="<?php echo htmlspecialchars($sb_pax ?: ($_POST['passenger_count'] ?? '')); ?>" class="form-input p-1"></div>
+            </div>
+            <input type="hidden" name="route_waypoints" value='<?php echo htmlspecialchars($sb_waypoints ?: ($_POST['route_waypoints'] ?? '')); ?>'>
+            <?php if ($edit_flight): ?>
+                <input type="hidden" name="update_id" value="<?php echo $edit_flight['id']; ?>">
+                <button type="submit" name="update_flight" class="btn-glow w-full py-4 mt-4 uppercase tracking-widest text-sm bg-indigo-600 hover:bg-indigo-500">Atualizar Voo</button>
+            <?php else: ?>
+                <button type="submit" name="add_flight" class="btn-glow w-full py-4 mt-4 uppercase tracking-widest text-sm">Criar Voo</button>
+            <?php endif; ?>
         </form>
-    </div>
-    <div id="ac_schedule" class="p-6 bg-indigo-500/5 border-t border-white/10 hidden shrink-0 max-h-[250px] overflow-y-auto">
-        <p class="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-3">Linha do Tempo (Hoje)</p>
-        <div id="schedule_list" class="space-y-2"></div>
     </div>
 </div>
 
-<div class="flex-1 flex flex-col justify-end z-10 max-h-full overflow-hidden pointer-events-none">
+<form id="sbapiform" style="display:none;">
+    <input type="text" name="orig"><input type="text" name="dest"><input type="text" name="route"><input type="text" name="type">
+    <input type="text" name="airline" value="<?php echo $settings['va_callsign']; ?>"><input type="text" name="fltnum"><input type="text" name="units" value="KGS"><input type="text" name="navlog" value="1">
+    <input type="text" name="deph"><input type="text" name="depm">
+</form>
+
+
+<!-- SimBrief Loader Modal -->
+<div id="sbModal" class="fixed inset-0 z-[100] hidden flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="closeSbModal()"></div>
+    <div class="sb-modal-content w-full max-w-2xl glass-panel rounded-[32px] overflow-hidden shadow-2xl border border-white/20 z-10 transition-all duration-300">
+        <div class="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30">
+                    <i class="fas fa-bolt text-indigo-400"></i>
+                </div>
+                <div>
+                    <h3 class="text-white font-bold text-base leading-tight">SimBrief Dispatch</h3>
+                    <p class="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">Sincronização em Tempo Real</p>
+                </div>
+            </div>
+            <button onclick="closeSbModal()" class="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <div class="sb-iframe-container" style="height: 450px; position: relative; background: #000;">
+            <div id="sbLoadingState" class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#0c0e17]">
+                <div class="relative w-16 h-16">
+                    <div class="absolute inset-0 border-4 border-indigo-500/20 rounded-full"></div>
+                    <div class="absolute inset-0 border-4 border-t-indigo-500 rounded-full animate-spin"></div>
+                </div>
+                <p class="text-xs font-bold text-slate-400 mt-6 tracking-[0.2em] uppercase animate-pulse">Conectando ao SimBrief...</p>
+                <p class="text-[10px] text-slate-500 mt-2">Aguardando resposta do servidor</p>
+                <div id="sbStatusText" class="text-[9px] text-indigo-400/60 mt-4 font-mono font-bold uppercase tracking-wider">Iniciando...</div>
+            </div>
+            <iframe id="sbIframe" name="SBworker" src="about:blank" class="w-full h-full border-0" onload="document.getElementById('sbLoadingState').style.display='none'"></iframe>
+        </div>
+        
+        <div class="p-4 bg-indigo-500/5 text-center border-t border-white/5 flex flex-col gap-2">
+            <p class="text-[10px] text-slate-400 italic">Siga as instruções na tela. Esta janela será processada automaticamente ao concluir.</p>
+            <div id="sbManualFallback" class="hidden">
+                 <p class="text-[9px] text-slate-500">Se não fechar automaticamente após o 100%:</p>
+                 <button onclick="checkSBworkerManual()" class="text-indigo-400 text-[10px] font-bold underline">Tentar Sincronização Manual</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<div class="flex-1 flex flex-col justify-end z-10 max-h-full overflow-hidden">
     <div class="mb-4">
         <?php if ($success): ?><div class="glass-panel border-l-4 border-emerald-500 px-6 py-3 rounded-2xl text-emerald-400 font-bold mb-2 animate-pulse"><i class="fas fa-check-circle mr-2"></i> <?php echo $success; ?></div><?php endif; ?>
         <?php if ($error): ?><div class="glass-panel border-l-4 border-rose-500 px-6 py-3 rounded-2xl text-rose-400 font-bold mb-2"><i class="fas fa-exclamation-triangle mr-2"></i> <?php echo $error; ?></div><?php endif; ?>
     </div>
-    <div class="bottom-shelf glass-panel rounded-3xl overflow-hidden minimized">
-        <div class="p-4 border-b border-white/10 flex justify-between items-center shrink-0">
-            <div class="flex items-center gap-4">
-                <div class="shelf-toggle text-slate-400 hover:text-white transition" onclick="toggleShelf()">
-                    <i class="fas fa-chevron-up" id="shelf-icon"></i>
-                </div>
-                <h3 class="text-white font-bold text-sm">Malha Operacional</h3>
-                <div class="bg-white/5 border border-white/10 rounded-full px-3 py-1 text-[10px] text-slate-400 font-bold"><?php echo count($flights); ?> ATIVAS</div>
-            </div>
+    <div id="malha-shelf" class="bottom-shelf glass-panel rounded-3xl overflow-hidden minimized">
+        <div class="p-4 border-b border-white/10 flex justify-between items-center shrink-0 cursor-pointer" onclick="toggleMalha(event)">
+            <div class="flex items-center gap-4"><h3 class="text-white font-bold text-sm">Malha Operacional</h3><div class="bg-white/5 border border-white/10 rounded-full px-3 py-1 text-[10px] text-slate-400 font-bold"><?php echo count($flights); ?> ATIVAS</div><i id="malha-icon" class="fas fa-chevron-up text-xs text-slate-500 transition-transform duration-300"></i></div>
             <div class="relative w-64"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i><input type="text" id="flightSearch" placeholder="Busca rápida..." class="w-full bg-white/5 border border-white/10 rounded-full pl-9 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"></div>
         </div>
         <div class="flex-1 overflow-y-auto">
             <table class="w-full text-left text-[11px] text-slate-300">
                 <thead class="bg-white/2 sticky top-0 z-20 text-[9px] uppercase tracking-widest font-bold text-slate-500 bg-[#0c0e17]">
-                    <tr><th class="px-6 py-3">Número</th><th class="px-6 py-3 text-center">Trecho</th><th class="px-6 py-3">UTC Window</th><th class="px-6 py-3">Equipamento</th><th class="px-6 py-3">EET</th><th class="px-6 py-3 text-right pr-8">Ação</th></tr>
+                    <tr><th class="px-6 py-3">Número</th><th class="px-6 py-3 text-center">Trecho</th><th class="px-6 py-3">Rota</th><th class="px-6 py-3">UTC Window</th><th class="px-6 py-3">Dados (Pax/Fuel)</th><th class="px-6 py-3">Equipamento</th><th class="px-6 py-3">EET</th><th class="px-6 py-3 text-right pr-8">Ação</th></tr>
                 </thead>
                 <tbody class="divide-y divide-white/5">
                     <?php foreach ($flights as $f): ?>
-                            <tr class="hover:bg-white/5 transition group cursor-pointer" 
-                                onmouseover="highlightRoute('<?php echo $f['flight_number']; ?>')" 
-                                onmouseout="resetRouteHighlight()">
+                            <tr class="hover:bg-white/5 transition group cursor-pointer border-l-2 border-transparent" onclick="selectFlight(this, '<?php echo $f['flight_number']; ?>')" ondblclick="focusFlight(this, '<?php echo $f['flight_number']; ?>')">
                                 <td class="px-6 py-3 font-bold text-indigo-400"><?php echo $f['flight_number']; ?></td>
                                 <td class="px-6 py-3 text-center"><div class="flex items-center justify-center gap-2"><span><?php echo $f['dep_icao']; ?></span><i class="fas fa-arrow-right text-[10px] text-slate-600"></i><span><?php echo $f['arr_icao']; ?></span></div></td>
+                                <td class="px-6 py-3 font-mono text-[9px] text-slate-400 max-w-[150px] truncate" title="<?php echo htmlspecialchars($f['route']); ?>"><?php echo htmlspecialchars($f['route'] ?: '--'); ?></td>
                                 <td class="px-6 py-3 font-mono"><?php echo substr($f['dep_time'], 0, 5); ?> - <?php echo substr($f['arr_time'], 0, 5); ?></td>
+                                <td class="px-6 py-3">
+                                    <div class="flex flex-col text-[10px]">
+                                        <span class="text-slate-200"><i class="fas fa-users text-slate-500 mr-1 w-4"></i> <?php echo $f['passenger_count']; ?></span>
+                                        <span class="text-slate-200"><i class="fas fa-gas-pump text-slate-500 mr-1 w-4"></i> <?php echo number_format($f['estimated_fuel']); ?> kg</span>
+                                    </div>
+                                </td>
                                 <td class="px-6 py-3 flex flex-col"><span class="font-bold text-slate-200"><?php echo $f['registration'] ?: '--'; ?></span><span class="text-[9px] text-slate-500 uppercase"><?php echo $f['aircraft_type']; ?></span></td>
                                 <td class="px-6 py-3"><?php echo intval($f['duration_minutes'] / 60) . 'h ' . ($f['duration_minutes'] % 60) . 'm'; ?></td>
-                                <td class="px-6 py-3 text-right pr-8"><form method="POST" onsubmit="return confirm('Excluir?');"><input type="hidden" name="delete_id" value="<?php echo $f['id']; ?>"><button type="submit" class="text-slate-600 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><i class="fas fa-trash-alt"></i></button></form></td>
+                                <td class="px-6 py-3 text-right pr-8">
+                                    <div class="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <a href="?edit_id=<?php echo $f['id']; ?>" class="w-8 h-8 rounded-full bg-indigo-500/20 hover:bg-indigo-500 hover:text-white text-indigo-400 flex items-center justify-center transition-all"><i class="fas fa-edit text-xs"></i></a>
+                                        <form method="POST" onsubmit="return confirm('Excluir?');" class="inline">
+                                            <input type="hidden" name="delete_id" value="<?php echo $f['id']; ?>">
+                                            <button type="submit" class="w-8 h-8 rounded-full bg-rose-500/20 hover:bg-rose-500 hover:text-white text-rose-400 flex items-center justify-center transition-all"><i class="fas fa-trash-alt text-xs"></i></button>
+                                        </form>
+                                    </div>
+                                </td>
                             </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -237,210 +449,572 @@ include '../includes/layout_header.php';
     </div>
 </div>
 
+<script src="../SimBrief_APIv1/simbrief.apiv1.js"></script>
 <script>
-    let debounceTimer, map, mapBounds;
+    var api_dir = '../SimBrief_APIv1/';
+    let debounceTimer, map, mapObjects = {}, currentBounds = null;
+    let isAnimating = false;
     const routeLayerGroup = L.layerGroup();
-    const activeRouteLayer = L.layerGroup();
-    const aircraftLayerGroup = L.layerGroup();
-    const previewLayerGroup = L.layerGroup();
-    const flightPolylines = {};
+    const resetTimers = {}; // Store timers for debounce
+
+    // SimBrief Modal Logic
+    function openSbModal() {
+        const modal = document.getElementById('sbModal');
+        modal.classList.remove('hidden');
+        setTimeout(() => modal.classList.add('show'), 10);
+        document.getElementById('sbLoadingState').style.display = 'flex';
+    }
+
+    function closeSbModal() {
+        const modal = document.getElementById('sbModal');
+        modal.classList.remove('show');
+        setTimeout(() => {
+            modal.classList.add('hidden');
+            document.getElementById('sbIframe').src = 'about:blank';
+        }, 300);
+        if (typeof SBloop !== 'undefined' && SBloop) window.clearInterval(SBloop);
+    }
+
+    // Override SimBrief API internals
+    function LaunchSBworker() {
+        openSbModal();
+        return document.getElementById('sbIframe').contentWindow;
+    }
+
+    // Aggressive redirection check
+    let redirectCheckStarted = false;
+    let manualCheckActive = false;
+
+    // Override the library's Redirect_caller to make it more robust in an iframe
+    function Redirect_caller() {
+        if (typeof ofp_id === 'undefined' || !ofp_id) {
+            setTimeout(Redirect_caller, 500);
+            return;
+        }
+
+        const statusEl = document.getElementById('sbStatusText');
+        if (statusEl) statusEl.textContent = 'Verificando plano: ' + ofp_id;
+
+        if (fe_result === 'true') {
+            if (statusEl) statusEl.textContent = 'PLANO ENCONTRADO! Redirecionando...';
+            handleSimBriefDone(ofp_id);
+            return;
+        }
+
+        // Check file status via original PHP bridge
+        fe_result = 'notset';
+        const url = api_dir + 'simbrief.apiv1.php?js_url_check=' + ofp_id + '&var=fe_result';
+        const script = document.createElement('script');
+        script.src = url + '&p=' + Math.floor(Math.random() * 1000000);
+        document.head.appendChild(script);
+        
+        setTimeout(Redirect_caller, 1500);
+    }
+
+    function checkSBworker() {
+        if (!redirectCheckStarted && typeof ofp_id !== 'undefined' && ofp_id) {
+            redirectCheckStarted = true;
+            Redirect_caller();
+        }
+    }
+
+    function checkSBworkerManual() {
+        fe_result = 'notset'; // Force re-check
+        Redirect_caller();
+        setTimeout(() => {
+            if (fe_result !== 'true') alert('O plano ainda não parece estar pronto no servidor do SimBrief. Aguarde o 100% aparecer na barra verde.');
+        }, 2000);
+    }
+
+    window.handleSimBriefDone = function(ofpId) {
+        if (typeof SBloop !== 'undefined' && SBloop) window.clearInterval(SBloop);
+        
+        const currentUrl = new URL(window.location.origin + window.location.pathname);
+        currentUrl.searchParams.set('ofp_id', ofpId);
+        currentUrl.searchParams.set('aircraft_id', document.getElementById('ac').value);
+        currentUrl.searchParams.set('fn', document.getElementsByName('flight_number')[0].value);
+        
+        // Preserve edit_id if exists
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('edit_id')) {
+            currentUrl.searchParams.set('edit_id', params.get('edit_id'));
+        }
+        
+        window.location.href = currentUrl.toString();
+    }
+
+    window.addEventListener('message', function(event) {
+        if (event.data.type === 'simbrief_done') {
+            handleSimBriefDone(event.data.ofp_id);
+        }
+    });
+
+    function openSbModal() {
+        const modal = document.getElementById('sbModal');
+        modal.classList.remove('hidden');
+        setTimeout(() => modal.classList.add('show'), 10);
+        document.getElementById('sbLoadingState').style.display = 'flex';
+        document.getElementById('sbManualFallback').classList.add('hidden');
+        setTimeout(() => document.getElementById('sbManualFallback').classList.remove('hidden'), 10000); // Show fallback after 10s
+    }
 
     function initMap() {
-        map = L.map('routeMap', { 
-            zoomControl: false,
-            preferCanvas: true
-        }).setView([-15.78, -47.92], 4);
-        
-        // Custom panes for layering
-        map.createPane('bgRoutes');
-        map.createPane('activeRoutes');
-        map.createPane('markers');
-        map.getPane('activeRoutes').style.zIndex = 600;
-        map.getPane('markers').style.zIndex = 650;
-        
+        map = L.map('routeMap', { zoomControl: false }).setView([-15.78, -47.92], 4);
+        map.on('zoomend', updateMarkerSize);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; CARTO' }).addTo(map);
+        
+        map.createPane('hubs');
+        map.getPane('hubs').style.zIndex = 700;
+        
+        map.createPane('lines');
+        map.getPane('lines').style.zIndex = 350;
+
+        map.createPane('planes');
+        map.getPane('planes').style.zIndex = 600;
+        map.getPane('planes').style.pointerEvents = 'none'; // CRITICAL: Prevent planes from stealing mouse focus
+        
+        map.getPane('tooltipPane').style.pointerEvents = 'none'; // Ensure tooltips don't steal focus
+        
         routeLayerGroup.addTo(map);
-        activeRouteLayer.addTo(map);
-        aircraftLayerGroup.addTo(map);
-        previewLayerGroup.addTo(map);
         loadMapRoutes();
+        if (typeof planeAnim !== 'undefined') cancelAnimationFrame(planeAnim);
+        animatePlanes();
     }
 
     async function loadMapRoutes() {
         const r = await fetch('../api/get_route_map.php');
-        const data = await r.json();
-        if (!data.routes) return;
+        const routes = await r.json();
+        
+        // Clean up existing objects to prevent ghost animations
+        for (const fnum in mapObjects) {
+            if (mapObjects[fnum].plane) mapObjects[fnum].plane.remove();
+            if (mapObjects[fnum].line) mapObjects[fnum].line.remove();
+            if (mapObjects[fnum].markers) mapObjects[fnum].markers.forEach(m => m.remove());
+            if (mapObjects[fnum].waypointMarkers) mapObjects[fnum].waypointMarkers.forEach(m => m.remove());
+        }
         
         routeLayerGroup.clearLayers();
-        aircraftLayerGroup.clearLayers();
-        activeRouteLayer.clearLayers();
-        Object.keys(flightPolylines).forEach(k => delete flightPolylines[k]);
-        
+        mapObjects = {};
+        airportMarkers = []; // Reset global array
+        const airportData = {}; 
         const b = [];
-        const airports = {};
-
-        // 1. Draw Routes (Canvas for Performance)
-        data.routes.forEach(x => {
+        
+        // 1. Map Coordinates and Group Departing Flights
+        routes.forEach(x => {
             if (x.dep_lat && x.arr_lat) {
-                const p1 = [x.dep_lat, x.dep_lon], p2 = [x.arr_lat, x.arr_lon];
+                // Fix: Parse coordinates as floats to prevent string concatenation during animation math
+                const p1 = [parseFloat(x.dep_lat), parseFloat(x.dep_lon)]; 
+                const p2 = [parseFloat(x.arr_lat), parseFloat(x.arr_lon)];
                 b.push(p1, p2);
-                airports[x.dep_icao] = p1;
-                airports[x.arr_icao] = p2;
-
-                const line = L.polyline([p1, p2], { 
-                    color: '#6366f1', 
-                    weight: 1, 
-                    opacity: 0.1, 
-                    pane: 'bgRoutes',
-                    interactive: true
-                }).addTo(routeLayerGroup);
                 
-                line.bindTooltip(`${x.flight_number}: ${x.dep_icao} ➜ ${x.arr_icao}`, { sticky: true, className: 'glass-tooltip' });
-                line.on('click', (e) => { L.DomEvent.stopPropagation(e); highlightRoute(x.flight_number); });
+                if (!airportData[x.dep_icao]) airportData[x.dep_icao] = { pos: p1, departing: [] };
+                if (!airportData[x.arr_icao]) airportData[x.arr_icao] = { pos: p2, departing: [] };
                 
-                flightPolylines[x.flight_number] = { coords: [p1, p2], dep: x.dep_icao, arr: x.arr_icao };
+                airportData[x.dep_icao].departing.push(x.flight_number);
             }
         });
 
-        // 2. Draw Aircraft (Fleet Positions)
-        if (data.fleet) {
-            data.fleet.forEach(ac => {
-                if (ac.lat && ac.lon) {
-                    const planeIcon = L.divIcon({
-                        className: 'aircraft-marker-container',
-                        html: `<div class="bg-indigo-500 w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[10px] text-white shadow-lg"><i class="fas fa-plane"></i></div>`,
-                        iconSize: [24, 24],
-                        iconAnchor: [12, 12]
-                    });
-                    L.marker([ac.lat, ac.lon], { icon: planeIcon, pane: 'markers' })
-                        .addTo(aircraftLayerGroup)
-                        .bindTooltip(`<b>${ac.registration}</b> (${ac.icao_code})<br>Em: ${ac.current_icao}`, { className: 'glass-tooltip' });
+        // 2. Clear then Draw Lines 
+        routes.forEach(x => {
+            if (x.dep_lat && x.arr_lat) {
+                const p1 = [parseFloat(x.dep_lat), parseFloat(x.dep_lon)];
+                const p2 = [parseFloat(x.arr_lat), parseFloat(x.arr_lon)];
+                
+                let detailedPath = null;
+                const directPath = [p1, p2];
+
+                if (x.route_waypoints) {
+                    try {
+                        const wps = JSON.parse(x.route_waypoints);
+                        if (Array.isArray(wps) && wps.length > 0) detailedPath = wps;
+                    } catch(e) { console.error('Error parsing waypoints', e); }
+                }
+
+                const line = L.polyline(detailedPath || directPath, { 
+                    color: '#94a3b8', 
+                    weight: 1, 
+                    opacity: 0.15, 
+                    dashArray: '3,3', 
+                    interactive: false,
+                    pane: 'lines' 
+                }).addTo(routeLayerGroup);
+
+                // Calculate rotation for plane icon (Bearing)
+                // SVG points UP (North) by default, so we match the Azimuth angle directly (0 = North)
+                const dy = p2[0] - p1[0];
+                const dx = p2[1] - p1[1];
+                let angle = (Math.atan2(dx, dy) * 180 / Math.PI); 
+                
+                const planeIcon = L.divIcon({
+                    className: 'plane-node',
+                    html: `<svg class="plane-svg plane-icon" viewBox="0 0 24 24" style="transform: rotate(${angle}deg);"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>`,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12] 
+                });
+
+                const plane = L.marker(p1, { icon: planeIcon, pane: 'planes', interactive: false, opacity: 0 }).addTo(routeLayerGroup);
+                
+                mapObjects[x.flight_number] = { 
+                    line, 
+                    directPath: directPath,
+                    detailedPath: detailedPath || directPath,
+                    markers: [], 
+                    plane,
+                    p1, p2,
+                    progress: 0, 
+                    speed: 0.002, // Slower speed for detailed routes
+                    active: false
+                };
+            }
+        });
+
+        // 3. Draw Markers (Hubs) on top
+        for (const icao in airportData) {
+            const data = airportData[icao];
+            const marker = L.circleMarker(data.pos, { 
+                radius: 6, 
+                color: '#818cf8', 
+                weight: 2, 
+                fillColor: '#1e1b4b', 
+                fillOpacity: 1, 
+                interactive: true,
+                pane: 'hubs',
+                className: 'airport-node'
+            }).addTo(routeLayerGroup);
+
+            marker.bindTooltip(icao, { permanent: false, direction: 'top', className: 'glass-tooltip', offset: [0, -10] });
+            
+            marker.on('mouseover', function(e) {
+                console.log('Hover Airport:', icao, 'Flights:', data.departing);
+                L.DomEvent.stopPropagation(e);
+                this.setStyle({ color: '#fbbf24', radius: 7, weight: 2 });
+                data.departing.forEach(fn => highlightRoute(fn, false)); 
+            });
+            
+            marker.on('mouseout', function(e) {
+                L.DomEvent.stopPropagation(e);
+                this.setStyle({ color: '#818cf8', radius: 6, weight: 2 });
+                data.departing.forEach(fn => resetRoute(fn, false));
+            });
+
+            // Store for dynamic resizing
+            airportMarkers.push(marker);
+
+            // Map markers back to flights for individual row highlights
+            routes.forEach(x => {
+                if (x.dep_icao === icao || x.arr_icao === icao) {
+                    if (mapObjects[x.flight_number]) mapObjects[x.flight_number].markers.push(marker);
                 }
             });
         }
+        
+        // Initial size set
+        updateMarkerSize();
 
-        // 3. Draw Airport Markers
-        Object.entries(airports).forEach(([icao, pos]) => {
-            const marker = L.marker(pos, {
-                icon: L.divIcon({
-                    className: 'airport-marker',
-                    iconSize: [10, 10],
-                    iconAnchor: [5, 5]
-                }),
-                pane: 'markers',
-                interactive: true
-            }).addTo(routeLayerGroup);
-
-            marker.bindTooltip(icao, { direction: 'top', className: 'glass-tooltip' });
-            marker.on('click', (e) => {
-                L.DomEvent.stopPropagation(e);
-                highlightAirportRoutes(icao);
-            });
-        });
-
-        if (b.length) {
-            mapBounds = L.latLngBounds(b);
+        if (b.length > 0) {
+            currentBounds = L.latLngBounds(b);
             fitMapToRoutes();
         }
+    }
+    
+    let airportMarkers = [];
+    function updateMarkerSize() {
+        if (!map) return;
+        const z = map.getZoom();
+        // Scale: Zoom 4 -> 3px, Zoom 10+ -> 10px
+        let r = 3 + (z - 4) * 1.5;
+        if (r < 3) r = 3; 
+        if (r > 12) r = 12;
+
+        airportMarkers.forEach(m => m.setRadius(r));
     }
 
     function fitMapToRoutes() {
-        if (!map || !mapBounds) return;
-        const isMinimized = document.querySelector('.bottom-shelf').classList.contains('minimized');
+        if (!currentBounds || !map) return;
+        const shelf = document.getElementById('malha-shelf');
+        const isMinimized = shelf.classList.contains('minimized');
+        
         const padding = {
-            top: 100,
-            bottom: isMinimized ? 80 : 300,
-            left: 420,
-            right: 50
+            paddingTopLeft: [420, 100],
+            paddingBottomRight: [60, isMinimized ? 120 : 320],
+            animate: true,
+            duration: 1.2
         };
-        map.fitBounds(mapBounds, { 
-            paddingTopLeft: [padding.left, padding.top],
-            paddingBottomRight: [padding.right, padding.bottom],
-            animate: true 
-        });
+        
+        map.fitBounds(currentBounds, padding);
     }
 
-    function highlightAirportRoutes(icao) {
-        activeRouteLayer.clearLayers();
-        const activeCoords = [];
-        
-        Object.values(flightPolylines).forEach(item => {
-            if (item.dep === icao || item.arr === icao) {
-                L.polyline(item.coords, {
-                    color: '#fbbf24',
-                    weight: 3,
-                    opacity: 1,
-                    className: 'route-line-active',
-                    pane: 'activeRoutes'
-                }).addTo(activeRouteLayer);
-                activeCoords.push(item.coords[0], item.coords[1]);
-            }
-        });
-        
-        if (activeCoords.length > 0) {
-            map.fitBounds(L.latLngBounds(activeCoords), { padding: [150, 150], animate: true });
-        }
-    }
+    let selectedFlight = null;
+    let selectedRow = null;
 
-    function toggleShelf() {
-        const shelf = document.querySelector('.bottom-shelf');
-        const icon = document.getElementById('shelf-icon');
-        shelf.classList.toggle('minimized');
-        icon.classList.toggle('fa-chevron-up');
-        icon.classList.toggle('fa-chevron-down');
+    function selectFlight(row, fnum) {
+        if (isAnimating) return;
         
-        setTimeout(() => {
-            map.invalidateSize();
+        // Prevent clicking buttons from triggering row selection (basic check)
+        if (event.target.closest('a') || event.target.closest('button')) return;
+
+        // If deselecting current
+        if (selectedFlight === fnum) {
+            resetRoute(fnum);
+            row.classList.remove('bg-white/10', 'border-indigo-500');
+            row.classList.add('border-transparent');
+            selectedFlight = null;
+            selectedRow = null;
+            
+            // Reset Zoom to Global View
             fitMapToRoutes();
-        }, 450);
-    }
-
-    function highlightRoute(fnum) {
-        activeRouteLayer.clearLayers();
-        const item = flightPolylines[fnum];
-        if (item && item.coords) {
-            L.polyline(item.coords, {
-                color: '#fbbf24',
-                weight: 4,
-                opacity: 1,
-                className: 'route-line-active',
-                pane: 'activeRoutes'
-            }).addTo(activeRouteLayer);
-            map.fitBounds(item.coords, { padding: [150, 150], animate: true });
+            return;
         }
+
+        // If changing selection
+        if (selectedFlight) {
+            resetRoute(selectedFlight);
+            if (selectedRow) {
+                selectedRow.classList.remove('bg-white/10', 'border-indigo-500');
+                selectedRow.classList.add('border-transparent');
+            }
+        }
+
+        // Select new
+        selectedFlight = fnum;
+        selectedRow = row;
+        row.classList.remove('border-transparent');
+        row.classList.add('bg-white/10', 'border-indigo-500');
+        
+        // Highlight with Direct Path (White)
+        highlightRoute(fnum, true, '#ffffff', false);
     }
 
-    function resetRouteHighlight() {
-        activeRouteLayer.clearLayers();
+    function focusFlight(row, fnum) {
+         if (isAnimating) return;
+         
+         // Ensure it's selected first
+         if (selectedFlight !== fnum) {
+             selectFlight(row, fnum);
+         }
+         
+         const obj = mapObjects[fnum];
+         if (obj) {
+             // 1. Plot Detailed Route
+             highlightRoute(fnum, true, '#ffffff', true);
+             
+             // 2. Zoom Info
+             const path = obj.detailedPath || obj.directPath;
+             const bounds = L.latLngBounds(path);
+             bounds.extend(obj.p1);
+             bounds.extend(obj.p2);
+             
+             // 3. Gradual Zoom
+             const shelf = document.getElementById('malha-shelf');
+             const isMinimized = shelf.classList.contains('minimized');
+             
+             map.flyToBounds(bounds, {
+                 paddingTopLeft: [420, 100],
+                 paddingBottomRight: [60, isMinimized ? 120 : 320],
+                 duration: 2.0,
+                 easeLinearity: 0.1
+             });
+         }
     }
 
-    async function updatePreview() {
-        const dep = document.getElementById('dep').value.toUpperCase();
-        const arr = document.getElementById('arr').value.toUpperCase();
-        if (dep.length === 4 && arr.length === 4) {
-            const r = await fetch(`../api/calculate_route.php?dep=${dep}&arr=${arr}`);
-            const d = await r.json();
-            previewLayerGroup.clearLayers();
-            if (d.dep_lat && d.arr_lat) {
-                const p1 = [d.dep_lat, d.dep_lon], p2 = [d.arr_lat, d.arr_lon];
-                L.circleMarker(p1, { radius: 5, color: '#fbbf24', fillOpacity: 0.8 }).addTo(previewLayerGroup);
-                L.circleMarker(p2, { radius: 5, color: '#fbbf24', fillOpacity: 0.8 }).addTo(previewLayerGroup);
-                L.polyline([p1, p2], { 
-                    color: '#fbbf24', 
-                    weight: 3, 
-                    opacity: 1, 
-                    className: 'route-line-active' 
-                }).addTo(previewLayerGroup);
-                map.fitBounds([p1, p2], { padding: [100, 100] });
-                
-                // Also update duration if empty
-                const durInput = document.getElementById('dur');
-                if(!durInput.value) {
-                    durInput.value = d.duration;
-                    calcArrTime();
+    function highlightRoute(fnum, updateMarkers = true, color = '#06b6d4', useDetailed = false) {
+        if (isAnimating) return;
+        
+        // Cancel any pending reset for this flight
+        if (resetTimers[fnum]) {
+            clearTimeout(resetTimers[fnum]);
+            delete resetTimers[fnum];
+        }
+
+        const obj = mapObjects[fnum];
+        if (obj && obj.plane) {
+            // Swap geometry based on hover target (Row=Direct, RouteCell=Detailed)
+            const path = useDetailed ? obj.detailedPath : obj.directPath;
+            obj.line.setLatLngs(path);
+
+            obj.line.setStyle({ color: color, weight: color === '#ffffff' ? 4 : 2, opacity: 1, dashArray: null });
+            obj.line.bringToFront();
+            
+            // Activate Plane Animation
+            if (!obj.active) {
+                obj.active = true;
+                if (obj.progress < 0.05) obj.progress = 0.05; 
+            }
+            
+            const el = obj.plane.getElement();
+            if (el) {
+                obj.plane.setZIndexOffset(1000); 
+                const icon = el.querySelector('.plane-icon');
+                if (icon) {
+                    icon.classList.add('plane-highlight');
+                    // Force white color if using detailed route
+                    if (useDetailed) {
+                        icon.style.filter = "contrast(0) brightness(2)"; 
+                    } else {
+                        icon.style.filter = ""; 
+                    }
                 }
             }
+            
+            if (updateMarkers) {
+                obj.markers.forEach(m => m.setStyle({ color: color, radius: 6, weight: 2 }));
+            }
+
+            // Waypoints Labels Logic
+            if (useDetailed && obj.detailedPath && obj.detailedPath.length > 0 && obj.detailedPath[0].name) {
+                 if (!obj.waypointMarkers) {
+                     obj.waypointMarkers = obj.detailedPath.map(pt => {
+                         // Skip if coordinates are invalid
+                         if (!pt.lat || !pt.lng) return null;
+                         
+                         const wpIcon = L.divIcon({
+                            className: '',
+                            html: '<div style="width: 5px; height: 5px; background: #fff; transform: rotate(45deg); box-shadow: 0 0 4px rgba(0,0,0,0.8); border: 1px solid rgba(0,0,0,0.5);"></div>',
+                            iconSize: [5, 5],
+                            iconAnchor: [2.5, 2.5]
+                         });
+
+                         return L.marker([pt.lat, pt.lng], {
+                             icon: wpIcon,
+                             pane: 'lines', // Use lines pane to be below planes
+                             interactive: false
+                         }).bindTooltip(pt.name, {
+                             permanent: true,
+                             direction: 'top',
+                             className: 'waypoint-tooltip',
+                             offset: [0, -6]
+                         });
+                     }).filter(x => x);
+                 }
+                 obj.waypointMarkers.forEach(m => m.addTo(map));
+            } else {
+                 if (obj.waypointMarkers) {
+                     obj.waypointMarkers.forEach(m => m.remove());
+                 }
+            }
         }
+    }
+
+    function resetRoute(fnum, updateMarkers = true) {
+        // Add debounce to prevent flickering
+        if (resetTimers[fnum]) clearTimeout(resetTimers[fnum]);
+        
+        resetTimers[fnum] = setTimeout(() => {
+            const obj = mapObjects[fnum];
+            
+            // Clear waypoints if any
+            if (obj && obj.waypointMarkers) {
+                obj.waypointMarkers.forEach(m => m.remove());
+            }
+
+            if (obj && obj.plane) {
+                // Reset to detailed path for default view
+                obj.line.setLatLngs(obj.detailedPath);
+                obj.line.setStyle({ color: '#94a3b8', weight: 1, opacity: 0.15, dashArray: '3,3' });
+                
+                // Deactivate Plane Animation
+                obj.active = false;
+                obj.progress = 0;
+                
+                const el = obj.plane.getElement();
+                if (el) {
+                    obj.plane.setZIndexOffset(0); 
+                    obj.plane.setOpacity(0); // Hide immediately
+                    const icon = el.querySelector('.plane-icon');
+                    if (icon) {
+                        // icon.classList.remove('plane-visible');
+                        icon.classList.remove('plane-highlight');
+                    }
+                }
+
+                if (updateMarkers) {
+                    obj.markers.forEach(m => m.setStyle({ color: '#818cf8', radius: 6, weight: 2 }));
+                }
+            }
+        }, 50); // 50ms buffer
+    }
+
+    let planeAnim;
+    function getPointAtLength(path, pct) {
+        // Helper to get lat/lng regardless of format
+        const getVal = (pt) => ({
+            lat: pt.lat !== undefined ? pt.lat : pt[0],
+            lng: pt.lng !== undefined ? pt.lng : pt[1]
+        });
+
+        // Calculate total length (approx)
+        let totalDist = 0;
+        const dists = [];
+        for (let i = 0; i < path.length - 1; i++) {
+            const d = map.distance(path[i], path[i+1]);
+            totalDist += d;
+            dists.push(d);
+        }
+        
+        const targetDist = totalDist * pct;
+        let runningDist = 0;
+        
+        for (let i = 0; i < dists.length; i++) {
+            if (runningDist + dists[i] >= targetDist) {
+                // Determine segment progress
+                const segPct = (targetDist - runningDist) / dists[i];
+                const p1 = getVal(path[i]);
+                const p2 = getVal(path[i+1]);
+                
+                const lat = p1.lat + (p2.lat - p1.lat) * segPct;
+                const lng = p1.lng + (p2.lng - p1.lng) * segPct;
+                
+                // Calculate angle
+                const y = Math.sin(p2.lng * Math.PI/180 - p1.lng * Math.PI/180) * Math.cos(p2.lat * Math.PI/180);
+                const x = Math.cos(p1.lat * Math.PI/180) * Math.sin(p2.lat * Math.PI/180) -
+                          Math.sin(p1.lat * Math.PI/180) * Math.cos(p2.lat * Math.PI/180) * Math.cos(p2.lng * Math.PI/180 - p1.lng * Math.PI/180);
+                const brng = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+                
+                return { lat, lng, angle: brng };
+            }
+            runningDist += dists[i];
+        }
+        const last = getVal(path[path.length-1]);
+        return { lat: last.lat, lng: last.lng, angle: 0 };
+    }
+
+    function animatePlanes() {
+        // Wrap in try-catch to prevent loop death
+        try {
+            for (const fnum in mapObjects) {
+                const obj = mapObjects[fnum];
+                if (obj.plane && obj.active) {
+                    obj.progress += obj.speed;
+                    if (obj.progress >= 1) obj.progress = 0;
+                    
+                    const currentPath = obj.line.getLatLngs(); // Uses currently active path (Detailed or Direct)
+
+                    if (Array.isArray(currentPath) && currentPath.length > 2) {
+                        // Detailed Path Logic
+                        const pt = getPointAtLength(currentPath, obj.progress);
+                        obj.plane.setLatLng([pt.lat, pt.lng]);
+                        // Rotate Icon
+                        const el = obj.plane.getElement()?.querySelector('.plane-svg');
+                        if (el) el.style.transform = `rotate(${pt.angle}deg)`;
+                        
+                    } else {
+                        // Simple Direct Logic
+                        const lat = obj.p1[0] + (obj.p2[0] - obj.p1[0]) * obj.progress;
+                        const lng = obj.p1[1] + (obj.p2[1] - obj.p1[1]) * obj.progress;
+                        obj.plane.setLatLng([lat, lng]);
+                    }
+
+                    // Fade In / Out Logic
+                    let op = 1;
+                    if (obj.progress < 0.15) op = obj.progress / 0.15;
+                    else if (obj.progress > 0.85) op = (1 - obj.progress) / 0.15;
+                    obj.plane.setOpacity(op);
+                }
+            }
+        } catch (e) {
+            console.error("Animation Error:", e);
+        }
+        planeAnim = requestAnimationFrame(animatePlanes);
     }
 
     function searchAirport(input) {
@@ -459,7 +1033,7 @@ include '../includes/layout_header.php';
                             const d = document.createElement('div');
                             d.className = 'px-4 py-2 hover:bg-white/10 cursor-pointer text-[11px] text-slate-300 border-b border-white/5 last:border-0';
                             d.textContent = x.label;
-                            d.onclick = () => { input.value = x.value; list.classList.add('hidden'); checkAvailability(); updatePreview(); };
+                            d.onclick = () => { input.value = x.value; list.classList.add('hidden'); checkAvailability(); };
                             list.appendChild(d);
                         });
                     } else list.classList.add('hidden');
@@ -467,32 +1041,70 @@ include '../includes/layout_header.php';
         }, 300);
     }
 
+    function updateSbInputs() {
+        const dep = document.getElementById('dep').value.toUpperCase();
+        const arr = document.getElementById('arr').value.toUpperCase();
+        const acId = document.getElementById('ac').value;
+        const fltNum = document.getElementsByName('flight_number')[0].value.replace(/\D/g, '');
+        const route = document.getElementById('route').value;
+        const depTime = document.getElementById('dep_time').value;
+        
+        if (dep) document.getElementsByName('orig')[0].value = dep;
+        if (arr) document.getElementsByName('dest')[0].value = arr;
+        if (fltNum) document.getElementsByName('fltnum')[0].value = fltNum;
+        if (route) document.getElementsByName('route')[0].value = route;
+        
+        if (depTime) {
+            const [h, m] = depTime.split(':');
+            document.getElementsByName('deph')[0].value = h;
+            document.getElementsByName('depm')[0].value = m;
+        }
+        
+        if (acId) {
+            const acOption = document.querySelector(`#ac option[value="${acId}"]`);
+            const acText = acOption ? acOption.text : "";
+            const match = acText.match(/\((.*?)\)/);
+            if (match) document.getElementsByName('type')[0].value = match[1];
+        }
+    }
+
     function fetchSimBrief() {
-        const dep = document.getElementById('dep').value.toUpperCase(), arr = document.getElementById('arr').value.toUpperCase(), acId = document.getElementById('ac').value;
-        if (!dep || !arr || !acId) return alert('DADOS INCOMPLETOS');
-        const acIcao = document.querySelector(`#ac option[value="${acId}"]`).text.match(/\((.*?)\)/)[1];
-        const btn = document.querySelector('button[onclick="fetchSimBrief()"]');
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; btn.disabled = true;
-        fetch(`../api/sb_fetch.php?dep=${dep}&arr=${arr}&ac=${acIcao}&ac_id=${acId}`)
-            .then(r => r.json())
-            .then(d => {
-                if (d.duration_minutes) document.getElementById('dur').value = d.duration_minutes;
-                if (d.route) document.getElementById('route').value = d.route;
-                calcArrTime();
-            }).finally(() => { btn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> SimBrief'; btn.disabled = false; });
+        const dep = document.getElementById('dep').value, arr = document.getElementById('arr').value, acId = document.getElementById('ac').value;
+        const fltNum = document.getElementsByName('flight_number')[0].value;
+        if (!dep || !arr || !acId) return alert('DADOS INCOMPLETOS: Selecione Origem, Destino e Aeronave.');
+        updateSbInputs();
+        
+        // Prepare output URL with current context to preserve state
+        let url = new URL(window.location.origin + window.location.pathname);
+        url.searchParams.set('aircraft_id', acId);
+        url.searchParams.set('fn', fltNum);
+        
+        // Preserve edit_id if exists
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('edit_id')) {
+            url.searchParams.set('edit_id', params.get('edit_id'));
+        }
+        
+        redirectCheckStarted = false; 
+        simbriefsubmit(url.toString());
     }
 
     function calcArrTime() {
-        const dep = document.getElementById('dep_time').value, dur = parseInt(document.getElementById('dur').value) || 0;
-        if (dep) {
+        const dep = document.getElementById('dep_time').value;
+        const durVal = document.getElementById('dur').value;
+        
+        if (dep && durVal !== "") {
+            const dur = parseInt(durVal);
             const [h, m] = dep.split(':').map(Number);
             const t = (h * 60) + m + dur;
             document.getElementById('arr_time').value = `${String(Math.floor(t / 60) % 24).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+        } else {
+            document.getElementById('arr_time').value = "";
         }
     }
 
     function checkAvailability(isAcChange = false) {
-        const acEl = document.getElementById('ac'), acId = acEl.value, depInput = document.getElementById('dep'), dep = depInput.value.toUpperCase();
+        const acEl = document.getElementById('ac'), acId = acEl.value, depInput = document.getElementById('dep'), dep = depInput.value.trim().toUpperCase();
         const showAll = document.getElementById('show_all_ac').checked, statusEl = document.getElementById('ac_status'), schedEl = document.getElementById('ac_schedule'), schedList = document.getElementById('schedule_list');
         
         if (isAcChange && acId) {
@@ -500,12 +1112,31 @@ include '../includes/layout_header.php';
             if (loc) depInput.value = loc;
         }
 
-        acEl.querySelectorAll('option').forEach(o => { if (o.value) o.style.display = (showAll || !dep || o.getAttribute('data-location') === dep) ? 'block' : 'none'; });
+        acEl.querySelectorAll('option').forEach(o => { 
+            if (o.value) {
+                const isSelected = (acId === o.value);
+                const isMatch = (showAll || !dep || o.getAttribute('data-location') === dep);
+                
+                // Always show the selected option, otherwise filter by match
+                o.style.display = (isMatch || isSelected) ? 'block' : 'none';
+                
+                // Logic to clear value removed to prevent auto-deselecting on load
+            }
+        });
 
         if (acId) {
             fetch(`../api/get_ac_status.php?id=${acId}`).then(r => r.json()).then(data => {
                 statusEl.classList.remove('hidden'); statusEl.innerHTML = `<span class="text-indigo-400 font-bold uppercase tracking-tighter">Posição: ${data.current_location}</span>`;
-                schedEl.classList.remove('hidden'); schedList.innerHTML = '';
+                
+                // Only show schedule if it's a manual change OR if dep_time is empty
+                const depTimeFilled = document.getElementById('dep_time').value !== "";
+                if (isAcChange || !depTimeFilled) {
+                    schedEl.classList.remove('hidden');
+                } else {
+                    schedEl.classList.add('hidden');
+                }
+
+                schedList.innerHTML = '';
                 if (data.schedule?.length) {
                     data.schedule.forEach(s => {
                         const d = document.createElement('div'); d.className = 'route-card flex justify-between items-center text-[10px] text-slate-300';
@@ -517,11 +1148,28 @@ include '../includes/layout_header.php';
                     const suggest = `${String(Math.floor(t/60)%24).padStart(2, '0')}:${String(t%60).padStart(2, '0')}`;
                     const suggDiv = document.createElement('div'); suggDiv.className = 'suggest-card text-[10px] font-bold text-indigo-400';
                     suggDiv.innerHTML = `<i class="fas fa-magic mr-1"></i> Sugestão: Decolar às ${suggest} (Z)`;
-                    suggDiv.onclick = () => { document.getElementById('dep_time').value = suggest; calcArrTime(); };
+                    suggDiv.onclick = () => { document.getElementById('dep_time').value = suggest; calcArrTime(); schedEl.classList.add('hidden'); };
                     schedList.appendChild(suggDiv);
                 } else schedList.innerHTML = '<div class="text-[10px] text-slate-500 italic text-center py-2">Pronto para despacho.</div>';
             });
         }
+    }
+
+    function toggleMalha(e) {
+        if (e.target.closest('#flightSearch')) return;
+        
+        isAnimating = true;
+        const shelf = document.getElementById('malha-shelf');
+        const icon = document.getElementById('malha-icon');
+        const isMinimized = shelf.classList.toggle('minimized');
+        icon.classList.toggle('fa-chevron-up', isMinimized);
+        icon.classList.toggle('fa-chevron-down', !isMinimized);
+        
+        // Re-fit map bounds after animation completes
+        setTimeout(() => {
+            fitMapToRoutes();
+            isAnimating = false;
+        }, 500);
     }
 
     document.getElementById('flightSearch').addEventListener('keyup', function() {
@@ -529,7 +1177,14 @@ include '../includes/layout_header.php';
         document.querySelectorAll('tbody tr').forEach(tr => tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none');
     });
 
-    document.addEventListener('DOMContentLoaded', () => { initMap(); });
+    document.addEventListener('DOMContentLoaded', () => { 
+        initMap(); 
+        checkAvailability();
+        if (document.getElementById('dep_time').value && document.getElementById('dur').value) {
+            calcArrTime();
+        }
+        window.addEventListener('resize', fitMapToRoutes);
+    });
 </script>
 
 <?php include '../includes/layout_footer.php'; ?>

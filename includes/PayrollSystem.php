@@ -6,10 +6,6 @@ class PayrollSystem
     private $pdo;
     private $settings = [];
 
-    // Configurações Fiscais (Simuladas - Brasil)
-    const IR_RATE = 0.15; // 15% Imposto de Renda (Simplificado)
-    const INSS_RATE = 0.11; // 11% Previdência
-
 
     public function __construct($pdo)
     {
@@ -21,7 +17,10 @@ class PayrollSystem
     {
         // Load defaults
         $this->settings = [
-            'daily_idle_cost' => 150.00,
+            'hotel_daily_rate' => 100.00,
+            'breakfast_cost' => 15.00,
+            'lunch_cost' => 20.00,
+            'dinner_cost' => 15.00,
             'currency_symbol' => 'R$'
         ];
 
@@ -58,7 +57,7 @@ class PayrollSystem
             $monthStr = date('Y-m'); // Corrente
 
         // 1. Get Pilot & Rank
-        $stmt = $this->pdo->prepare("SELECT p.*, r.pay_rate FROM pilots p LEFT JOIN ranks r ON p.rank = r.rank_name WHERE p.id = ?");
+        $stmt = $this->pdo->prepare("SELECT p.*, r.pay_rate FROM pilots p LEFT JOIN ranks r ON p.`rank` = r.rank_name WHERE p.id = ?");
         $stmt->execute([$pilotId]);
         $pilot = $stmt->fetch();
 
@@ -164,17 +163,11 @@ class PayrollSystem
             }
         }
 
-        $dailyCost = (float) $this->settings['daily_idle_cost'];
-        $idleCost = max(0, $idleDays * $dailyCost);
+        $idleCost = $idleDays * ((float)$this->settings['hotel_daily_rate'] + (float)$this->settings['breakfast_cost'] + (float)$this->settings['lunch_cost'] + (float)$this->settings['dinner_cost']);
 
-        // 4. Calculate Taxes
+        // 4. Totals (Simplified - No taxes as requested)
         $grossPay = $baseSalary + $flightPay;
-        $inss = $grossPay * self::INSS_RATE;
-        // IR incide sobre (Bruto - INSS)
-        $irbase = $grossPay - $inss;
-        $ir = $irbase * self::IR_RATE;
-
-        $totalDeductions = $inss + $ir + $idleCost;
+        $totalDeductions = $idleCost;
         $netPay = $grossPay - $totalDeductions;
 
         return [
@@ -186,8 +179,8 @@ class PayrollSystem
             'per_diem_deduction' => $idleCost,
             'idle_days' => $idleDays,
             'idle_details' => $idleDetails,
-            'tax_deduction' => $ir,
-            'pension_deduction' => $inss,
+            'tax_deduction' => 0.00,
+            'pension_deduction' => 0.00,
             'total_net_pay' => $netPay
         ];
     }
@@ -260,15 +253,11 @@ class PayrollSystem
     {
         $desc = [];
         $currency = $this->settings['currency_symbol'];
-        $dailyTotal = (float) $this->settings['daily_idle_cost'];
-
-        // Ratios
-        // Hotel 60%
-        // Food 40% (Bfast 10%, Lunch 17%, Dinner 13%)
-        $pHeight = $dailyTotal * 0.60;
-        $pBfast = $dailyTotal * 0.10;
-        $pLunch = $dailyTotal * 0.17;
-        $pDinner = $dailyTotal - ($pHeight + $pBfast + $pLunch); // Remainder to ensure exact sum check
+        
+        $pHotel = (float) $this->settings['hotel_daily_rate'];
+        $pBfast = (float) $this->settings['breakfast_cost'];
+        $pLunch = (float) $this->settings['lunch_cost'];
+        $pDinner = (float) $this->settings['dinner_cost'];
 
         $days = (int) round(($endTs - $startTs) / 86400) + 1;
 
@@ -299,7 +288,7 @@ class PayrollSystem
         $desc[] = "<span><i class='fas fa-bed text-blue-500 mr-1'></i> $hotelDisplay</span>";
         $desc[] = "<span class='font-mono'>$currency " . number_format($totalHotel, 2, ',', '.') . "</span>";
         $desc[] = "</div>";
-        $desc[] = "<div class='text-[10px] text-gray-400 ml-5'>$days diárias x $currency " . number_format($pHeight, 2, ',', '.') . "</div>";
+        $desc[] = "<div class='text-[10px] text-gray-400 ml-5'>$days diárias x $currency " . number_format($pHotel, 2, ',', '.') . "</div>";
         $desc[] = "</div>";
 
         // 2. Daily Food Details

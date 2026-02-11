@@ -87,17 +87,19 @@ try {
 
     if ($httpCode === 200 && $response) {
         $json = json_decode($response, true);
+        file_put_contents(__DIR__ . '/simbrief_debug.log', "Step 1 Target: $target\nStep 1 Response: " . substr($response, 0, 500) . "...\n\n", FILE_APPEND);
         if ($json && (isset($json['general']) || isset($json['params']))) {
             $sbOrigin = $json['general']['origin'] ?? $json['params']['orig'] ?? '';
             $sbDest = $json['general']['destination'] ?? $json['params']['dest'] ?? '';
 
+            // If it matches our current pair, we are golden
             if (strtoupper($sbOrigin) === strtoupper($dep) && strtoupper($sbDest) === strtoupper($arr)) {
                 $durationSeconds = $json['times']['est_time_enroute'] ?? 0;
                 echo json_encode([
                     'status' => 'success',
                     'duration_minutes' => floor($durationSeconds / 60),
                     'route' => $json['general']['route'] ?? '',
-                    'source' => 'SimBrief',
+                    'source' => 'SimBrief (Active Plan)',
                     'icao_type' => $json['general']['icao_type'] ?? ''
                 ]);
                 exit;
@@ -105,69 +107,31 @@ try {
         }
     }
 
-    // 4. Build Signed Generation Request
-    $apiKey = $settings['simbrief_api_key'] ?? '';
-    $timestamp = time();
-    $outputPage = "manual_fetch";
-    // Sign with API key using SimBrief's internal logic
-    $apiSig = md5($apiKey . $dep . $arr . $ac . $timestamp . $outputPage);
-    $apiCode = strtoupper(substr($apiSig, 0, 10));
-
-    $genUrl = "https://www.simbrief.com/api/xml.gen.php";
-    $genParams = [
-        'user_id' => $username,
-        'orig' => $dep,
-        'dest' => $arr,
-        'type' => $ac,
-        'apicode' => $apiCode,
-        'timestamp' => $timestamp,
-        'outputpage' => $outputPage,
-        'json' => 1
-    ];
-    $genTarget = "$genUrl?" . http_build_query($genParams);
-
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $genTarget);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 25); // Generation takes time
-    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-    // Mimic the header JS might send
-    curl_setopt($ch, CURLOPT_USERAGENT, 'SkyCrewVA-Admin/1.0');
-    $genResponse = curl_exec($ch);
-    $genHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    // LOG RAW RESPONSE FOR ADMIN
-    file_put_contents(__DIR__ . '/simbrief_debug.log', "Target: $genTarget\nResponse: $genResponse\n\n", FILE_APPEND);
-
-    if ($genHttpCode === 200 && $genResponse) {
-        $genJson = json_decode($genResponse, true);
-        if ($genJson && (isset($genJson['general']) || isset($genJson['params']))) {
-            $durationSeconds = $genJson['times']['est_time_enroute'] ?? 0;
-            $route = $genJson['general']['route'] ?? '';
-
-            if ($route) {
-                echo json_encode([
-                    'status' => 'success',
-                    'duration_minutes' => floor($durationSeconds / 60),
-                    'route' => $route,
-                    'source' => 'SimBrief (API v1 Signed)',
-                    'icao_type' => $genJson['general']['icao_type'] ?? ''
-                ]);
-                exit;
-            } else if (isset($genJson['fetch']['status']) && $genJson['fetch']['status'] === 'error') {
-                $sbError = $genJson['fetch']['status_msg'] ?? 'SimBrief: Erro na geração';
-            }
-        }
+    // 4. Fallback: Search in local Database for a previously used route for this pair
+    $stmt = $pdo->prepare("SELECT route, duration_minutes FROM flights_master WHERE dep_icao = ? AND arr_icao = ? AND route IS NOT NULL AND route != 'DCT' AND route != '' ORDER BY id DESC LIMIT 1");
+    $stmt->execute([$dep, $arr]);
+    $local = $stmt->fetch();
+    
+    if ($local) {
+        echo json_encode([
+            'status' => 'success',
+            'duration_minutes' => $local['duration_minutes'],
+            'route' => $local['route'],
+            'source' => 'SkyCrew DB (Histórico)',
+            'icao_type' => $ac
+        ]);
+        exit;
     }
 
     // 5. Final Fallback to Estimate
     $estimate = calculateEstimate($pdo, $dep, $arr, $cruiseSpeed);
     if ($estimate) {
-        $estimate['sb_error'] = $sbError ?: 'Plano não encontrado no SB';
+        // Since background generation is often restricted, we return the estimate 
+        // but mark it as such so the frontend can offer a manual SimBrief generation.
+        $estimate['sb_error'] = $sbError ?: 'Nenhum plano ativo no SB para este trecho.';
         echo json_encode($estimate);
     } else {
-        throw new Exception("SimBrief Error: " . ($sbError ?: "Aeroportos não encontrados localmente."));
+        throw new Exception("Erro SimBrief: Nenhum plano encontrado e aeroportos não reconhecidos localmente.");
     }
 
 } catch (Exception $e) {
