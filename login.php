@@ -76,7 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['role'] = $user_to_login['role'];
                 $_SESSION['email'] = $user_to_login['email'];
 
-                header("Location: " . ($user_to_login['role'] === 'admin' ? 'admin/dashboard.php' : 'pilot/dashboard.php'));
+                header("Location: pilot/dashboard.php");
                 exit;
             } elseif (empty($error)) {
                 $error = "Credenciais inválidas ou conta não encontrada.";

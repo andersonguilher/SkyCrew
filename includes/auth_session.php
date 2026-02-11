@@ -19,25 +19,27 @@ function requireRole($role)
 {
     requireLogin();
     
-    // Multi-stage check for Admin
-    $isAdminInDB = false;
-    if ($role === 'admin') {
-        global $pdo;
-        if (isset($pdo)) {
-            $stmt = $pdo->prepare("SELECT is_admin FROM pilots WHERE user_id = ?");
-            $stmt->execute([$_SESSION['user_id']]);
-            $isAdminInDB = (bool)$stmt->fetchColumn();
-        }
+    // If role requested is pilot, both pilot and admin can access
+    if ($role === 'pilot') {
+        return;
     }
 
-    if ($_SESSION['role'] !== $role && !$isAdminInDB) {
-        // Redirect to their appropriate dashboard if they try to access wrong area
-        if ($_SESSION['role'] === 'admin' || $isAdminInDB) {
-            header("Location: ../admin/dashboard.php");
-        } else {
-            header("Location: ../pilot/dashboard.php");
+    // If role requested is admin, check if user is admin
+    if ($role === 'admin') {
+        $isAdmin = ($_SESSION['role'] === 'admin');
+        if (!$isAdmin) {
+            global $pdo;
+            if (isset($pdo)) {
+                $stmt = $pdo->prepare("SELECT is_admin FROM pilots WHERE user_id = ?");
+                $stmt->execute([$_SESSION['user_id']]);
+                $isAdmin = (bool)$stmt->fetchColumn();
+            }
         }
-        exit;
+        
+        if (!$isAdmin) {
+            header("Location: ../pilot/dashboard.php");
+            exit;
+        }
     }
 }
 
