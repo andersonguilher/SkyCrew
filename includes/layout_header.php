@@ -135,10 +135,7 @@ if (!$is_admin && isset($pdo)) {
                             <i class="fas fa-home"></i>
                             <span class="nav-label">Início</span>
                         </a>
-                        <a href="briefing.php" class="nav-button <?php echo $current_page == 'briefing.php' ? 'active' : ''; ?>" title="Briefing">
-                            <i class="fas fa-file-alt"></i>
-                            <span class="nav-label">Briefing</span>
-                        </a>
+
                         <a href="paycheck.php" class="nav-button <?php echo $current_page == 'paycheck.php' ? 'active' : ''; ?>" title="Pagamentos">
                             <i class="fas fa-wallet"></i>
                             <span class="nav-label">Pagamentos</span>

@@ -101,47 +101,7 @@ include '../includes/layout_header.php';
         </div>
     </div>
 
-    <!-- Stats Row -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 shrink-0">
-        <!-- Rank Card -->
-        <div class="glass-panel p-6 rounded-3xl border-l-4 border-indigo-500 overflow-hidden relative">
-            <div class="absolute -right-4 -bottom-4 opacity-5 transform rotate-12">
-                <i class="fas fa-medal text-8xl"></i>
-            </div>
-            <div class="relative z-10">
-                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest"><?php echo $pilot['rank']; ?></p>
-                <h3 class="text-2xl font-bold text-white mt-1"><?php echo number_format($pilot['total_hours'], 1); ?> <span class="text-xs text-slate-500">h</span></h3>
-                <div class="mt-4 space-y-1">
-                    <div class="flex justify-between text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
-                        <span>Progresso Rank</span>
-                        <span><?php echo number_format($rankProgress, 0); ?>%</span>
-                    </div>
-                    <div class="w-full bg-white/5 h-1.5 rounded-full overflow-hidden border border-white/5">
-                        <div class="h-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" style="width: <?php echo min(100, $rankProgress); ?>%"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
 
-        <!-- Wallet Card -->
-        <div class="glass-panel p-6 rounded-3xl border-l-4 border-emerald-500 shadow-xl shadow-emerald-500/5">
-            <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Saldo Disponível</p>
-            <h3 class="text-2xl font-bold text-emerald-400 mt-1"><?php echo $sysSettings['currency_symbol'] ?? 'R$'; ?> <?php echo number_format($pilot['balance'] ?? 0, 2, ',', '.'); ?></h3>
-            <div class="flex items-center gap-2 mt-2">
-                <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full">
-                    <i class="fas fa-hand-holding-usd mr-1"></i> <?php echo $sysSettings['currency_symbol'] ?? 'R$'; ?><?php echo number_format($pilot['pay_rate'] ?? 15, 2); ?>/h
-                </span>
-            </div>
-        </div>
-
-        <!-- Base Card -->
-        <div class="glass-panel p-6 rounded-3xl border-l-4 border-blue-500">
-            <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Base de Operações</p>
-            <h3 class="text-2xl font-bold text-white mt-1"><?php echo $pilot['current_base']; ?></h3>
-            <p class="text-[9px] text-blue-400 font-bold mt-1 uppercase tracking-tighter"><i class="fas fa-map-marker-alt mr-1"></i> Hub Ativo</p>
-        </div>
-
-    </div>
 
     <!-- Main Content Grid -->
     <div class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 overflow-hidden">
@@ -274,7 +234,53 @@ include '../includes/layout_header.php';
         </div>
 
         <!-- Sidebar Column -->
-        <div class="lg:col-span-4 space-y-6">
+        <div class="lg:col-span-4 flex flex-col space-y-4 overflow-hidden">
+            <div class="flex items-center">
+                <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i class="fas fa-info-circle text-indigo-400 text-sm"></i> Informações do Piloto
+                </h2>
+            </div>
+            
+            <div class="flex-1 space-y-6 overflow-y-auto pr-2 custom-scrollbar">
+
+            <!-- Rank Card -->
+            <div class="glass-panel p-6 rounded-3xl border-l-4 border-indigo-500 overflow-hidden relative">
+                <div class="absolute -right-4 -bottom-4 opacity-5 transform rotate-12">
+                    <i class="fas fa-medal text-8xl"></i>
+                </div>
+                <div class="relative z-10">
+                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest"><?php echo $pilot['rank']; ?></p>
+                    <h3 class="text-2xl font-bold text-white mt-1"><?php echo number_format($pilot['total_hours'], 1); ?> <span class="text-xs text-slate-500">h</span></h3>
+                    <div class="mt-4 space-y-1">
+                        <div class="flex justify-between text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
+                            <span>Progresso Rank</span>
+                            <span><?php echo number_format($rankProgress, 0); ?>%</span>
+                        </div>
+                        <div class="w-full bg-white/5 h-1.5 rounded-full overflow-hidden border border-white/5">
+                            <div class="h-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" style="width: <?php echo min(100, $rankProgress); ?>%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wallet Card -->
+            <div class="glass-panel p-6 rounded-3xl border-l-4 border-emerald-500 shadow-xl shadow-emerald-500/5">
+                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Saldo Disponível</p>
+                <h3 class="text-2xl font-bold text-emerald-400 mt-1"><?php echo $sysSettings['currency_symbol'] ?? 'R$'; ?> <?php echo number_format($pilot['balance'] ?? 0, 2, ',', '.'); ?></h3>
+                <div class="flex items-center gap-2 mt-2">
+                    <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full">
+                        <i class="fas fa-hand-holding-usd mr-1"></i> <?php echo $sysSettings['currency_symbol'] ?? 'R$'; ?><?php echo number_format($pilot['pay_rate'] ?? 15, 2); ?>/h
+                    </span>
+                </div>
+            </div>
+
+            <!-- Base Card -->
+            <div class="glass-panel p-6 rounded-3xl border-l-4 border-blue-500">
+                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Base de Operações</p>
+                <h3 class="text-2xl font-bold text-white mt-1"><?php echo $pilot['current_base']; ?></h3>
+                <p class="text-[9px] text-blue-400 font-bold mt-1 uppercase tracking-tighter"><i class="fas fa-map-marker-alt mr-1"></i> Hub Ativo</p>
+            </div>
+
             <div class="glass-panel p-6 rounded-3xl flex flex-col gap-4">
                 <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <i class="fas fa-info-circle text-indigo-400"></i> SkyOS Notícias
@@ -287,15 +293,6 @@ include '../includes/layout_header.php';
                 </div>
             </div>
 
-            <div class="glass-panel p-6 rounded-3xl flex flex-col gap-4 bg-indigo-600/5 border-indigo-500/20 ring-1 ring-indigo-500/10">
-                <h3 class="text-xs font-bold text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-                    <i class="fas fa-shield-alt"></i> Pilot Conduct
-                </h3>
-                <ul class="text-[10px] text-slate-400 space-y-3 font-bold uppercase tracking-tight">
-                    <li class="flex items-start gap-2"><i class="fas fa-chevron-right text-[8px] mt-1 text-indigo-500"></i> Voar na rede (VATSIM/IVAO) é encorajado.</li>
-                    <li class="flex items-start gap-2"><i class="fas fa-chevron-right text-[8px] mt-1 text-indigo-500"></i> Landing rates acima de 600fpm requerem revisão técnica.</li>
-                    <li class="flex items-start gap-2"><i class="fas fa-chevron-right text-[8px] mt-1 text-indigo-500"></i> Mantenha o Skymetrics conectado durante todo o voo.</li>
-                </ul>
             </div>
         </div>
     </div>
