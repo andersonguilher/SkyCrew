@@ -14,10 +14,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $speed = intval($_POST['cruise_speed']);
         $registration = trim($_POST['registration']);
 
+        $current_icao = strtoupper(trim($_POST['current_icao']));
+
         try {
-            $stmt = $pdo->prepare("INSERT INTO fleet (icao_code, registration, fullname, cruise_speed) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$icao, $registration, $name, $speed]);
-            $success = "Aeronave $registration ($icao) adicionada com sucesso.";
+            $stmt = $pdo->prepare("INSERT INTO fleet (icao_code, registration, fullname, cruise_speed, current_icao) VALUES (?, ?, ?, ?, ?)");
+            $stmt->execute([$icao, $registration, $name, $speed, $current_icao]);
+            $success = "Aeronave $registration ($icao) adicionada com sucesso em $current_icao.";
         } catch (PDOException $e) {
             $error = "Erro: " . $e->getMessage();
         }
@@ -53,8 +55,13 @@ include '../includes/layout_header.php';
                     </button>
                 </div>
             </div>
+            <div class="space-y-1 relative">
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Localização (ICAO)</label>
+                <input type="text" name="current_icao" id="current_icao" class="form-input uppercase" placeholder="SBGR" maxlength="4" onkeyup="searchAirport(this)" autocomplete="off" required>
+                <div id="current_icao_list" class="absolute left-0 right-0 top-full mt-1 glass-panel rounded-xl overflow-hidden z-50 hidden border border-white/20 shadow-2xl bg-[#1e293b]"></div>
+            </div>
             <div class="space-y-1">
-                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Código ICAO</label>
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Tipo (ICAO)</label>
                 <input type="text" name="icao_code" id="add_icao" class="form-input uppercase opacity-70" placeholder="..." readonly required>
             </div>
             <div class="space-y-1">
@@ -101,7 +108,8 @@ include '../includes/layout_header.php';
             <thead class="bg-white/5 sticky top-0 z-10">
                 <tr class="text-[10px] uppercase tracking-widest text-slate-500 font-bold">
                     <th class="px-8 py-4">Matrícula</th>
-                    <th class="px-8 py-4">ICAO</th>
+                    <th class="px-8 py-4">Tipo</th>
+                    <th class="px-8 py-4">Localização</th>
                     <th class="px-8 py-4">Aeronave</th>
                     <th class="px-8 py-4">Velocidade</th>
                     <th class="px-8 py-4 text-right pr-12">Ação</th>
@@ -114,6 +122,11 @@ include '../includes/layout_header.php';
                         <td class="px-8 py-4">
                             <span class="bg-white/5 border border-white/10 px-2 py-1 rounded text-white font-bold">
                                 <?php echo $ac['icao_code']; ?>
+                            </span>
+                        </td>
+                        <td class="px-8 py-4">
+                            <span class="bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded text-emerald-400 font-bold">
+                                <?php echo $ac['current_icao'] ?: '---'; ?>
                             </span>
                         </td>
                         <td class="px-8 py-4 text-slate-200"><?php echo $ac['fullname']; ?></td>
@@ -162,6 +175,7 @@ include '../includes/layout_header.php';
 
 <script>
     let allSBAircraft = {};
+    let debounceTimer;
     const registrationPrefixes = "<?php echo $settings['fleet_registration_prefixes'] ?? 'PR,PT,PS,PP'; ?>".split(',');
 
     function generateJSMatricula() {
@@ -237,6 +251,37 @@ include '../includes/layout_header.php';
         btnAdd.classList.remove('opacity-50', 'cursor-not-allowed');
         closeSyncModal();
     }
+
+    function searchAirport(input) {
+        const term = input.value.trim();
+        const list = document.getElementById(input.id + '_list');
+        if (term.length < 2) { list.classList.add('hidden'); return; }
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            fetch(`../api/search_airports.php?term=${term}`)
+                .then(r => r.json())
+                .then(data => {
+                    list.innerHTML = '';
+                    if (data.length) {
+                        list.classList.remove('hidden');
+                        data.forEach(x => {
+                            const d = document.createElement('div');
+                            d.className = 'px-4 py-2 hover:bg-white/10 cursor-pointer text-[11px] text-slate-300 border-b border-white/5 last:border-0 transition';
+                            d.textContent = x.label;
+                            d.onclick = () => { input.value = x.value; list.classList.add('hidden'); };
+                            list.appendChild(d);
+                        });
+                    } else list.classList.add('hidden');
+                });
+        }, 300);
+    }
+
+    // Close lists when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.relative')) {
+            document.querySelectorAll('[id$="_list"]').forEach(l => l.classList.add('hidden'));
+        }
+    });
 </script>
 
 <?php include '../includes/layout_footer.php'; ?>
