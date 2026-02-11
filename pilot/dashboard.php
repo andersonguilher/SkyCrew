@@ -11,21 +11,6 @@ $sysSettings = getSystemSettings($pdo);
 $start_date = date('Y-m-d');
 $end_date = date('Y-m-d', strtotime('+7 days'));
 
-// Handle Generation
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate'])) {
-    $matcher = new ScheduleMatcher($pdo);
-    $schedule = $matcher->generateRoster($pilotId, $start_date, $end_date);
-    $count = count($schedule);
-
-    if ($count > 0) {
-        $_SESSION['flash_msg'] = ["type" => "success", "text" => "Escala gerada com sucesso! $count voos atribuídos."];
-    } else {
-        $_SESSION['flash_msg'] = ["type" => "error", "text" => "Nenhum voo compatível encontrado saindo de sua base atual."];
-    }
-
-    header("Location: dashboard.php");
-    exit;
-}
 
 // Handle Actions
 if (isset($_GET['action']) && isset($_GET['roster_id'])) {
@@ -117,7 +102,7 @@ include '../includes/layout_header.php';
     </div>
 
     <!-- Stats Row -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 shrink-0">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 shrink-0">
         <!-- Rank Card -->
         <div class="glass-panel p-6 rounded-3xl border-l-4 border-indigo-500 overflow-hidden relative">
             <div class="absolute -right-4 -bottom-4 opacity-5 transform rotate-12">
@@ -156,17 +141,6 @@ include '../includes/layout_header.php';
             <p class="text-[9px] text-blue-400 font-bold mt-1 uppercase tracking-tighter"><i class="fas fa-map-marker-alt mr-1"></i> Hub Ativo</p>
         </div>
 
-        <!-- Schedule CTA -->
-        <div class="glass-panel p-2 rounded-3xl bg-indigo-600/10 border border-indigo-500/20 group hover:border-indigo-500/50 transition-all cursor-pointer overflow-hidden">
-            <form method="POST" class="h-full">
-                <button type="submit" name="generate" class="w-full h-full flex flex-col items-center justify-center space-y-2 p-4">
-                    <div class="w-10 h-10 rounded-2xl bg-indigo-500 shadow-lg shadow-indigo-500/40 flex items-center justify-center text-white group-hover:scale-110 transition-transform">
-                        <i class="fas fa-calendar-plus"></i>
-                    </div>
-                    <span class="text-[10px] font-bold text-white uppercase tracking-widest">Gerar Escala PBS</span>
-                </button>
-            </form>
-        </div>
     </div>
 
     <!-- Main Content Grid -->
@@ -293,7 +267,7 @@ include '../includes/layout_header.php';
                 <ul class="text-[10px] text-slate-400 space-y-3 font-bold uppercase tracking-tight">
                     <li class="flex items-start gap-2"><i class="fas fa-chevron-right text-[8px] mt-1 text-indigo-500"></i> Voar na rede (VATSIM/IVAO) é encorajado.</li>
                     <li class="flex items-start gap-2"><i class="fas fa-chevron-right text-[8px] mt-1 text-indigo-500"></i> Landing rates acima de 600fpm requerem revisão técnica.</li>
-                    <li class="flex items-start gap-2"><i class="fas fa-chevron-right text-[8px] mt-1 text-indigo-500"></i> Mantenha o ACARS conectado durante todo o voo.</li>
+                    <li class="flex items-start gap-2"><i class="fas fa-chevron-right text-[8px] mt-1 text-indigo-500"></i> Mantenha o Skymetrics conectado durante todo o voo.</li>
                 </ul>
             </div>
         </div>
