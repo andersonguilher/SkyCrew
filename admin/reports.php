@@ -41,6 +41,26 @@ if (isset($_POST['approve_id'])) {
             $updateStmt = $pdo->prepare("UPDATE pilots SET total_hours = ?, balance = balance + ?, rank = ? WHERE id = ?");
             $updateStmt->execute([$newHours, $earnings, $newRank, $report['pilot_id']]);
 
+            // 4. Update Aircraft Location and Roster Status
+            $stmt = $pdo->prepare("
+                SELECT f.aircraft_id, f.arr_icao, r.id as roster_id 
+                FROM roster_assignments r
+                JOIN flights_master f ON r.flight_id = f.id
+                WHERE r.id = ?
+            ");
+            $stmt->execute([$report['roster_id']]);
+            $flightInfo = $stmt->fetch();
+
+            if ($flightInfo && $flightInfo['aircraft_id']) {
+                // Update Aircraft Position
+                $stmt = $pdo->prepare("UPDATE fleet SET current_icao = ? WHERE id = ?");
+                $stmt->execute([$flightInfo['arr_icao'], $flightInfo['aircraft_id']]);
+
+                // Update Roster Status to Flown
+                $stmt = $pdo->prepare("UPDATE roster_assignments SET status = 'Flown' WHERE id = ?");
+                $stmt->execute([$flightInfo['roster_id']]);
+            }
+
             $pdo->commit();
             $success = "Relatório aprovado e horas creditadas.";
         }

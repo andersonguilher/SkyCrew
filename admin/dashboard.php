@@ -9,6 +9,7 @@ try {
         'pilots' => $pdo->query("SELECT COUNT(*) FROM pilots")->fetchColumn(),
         'flights' => $pdo->query("SELECT COUNT(*) FROM flights_master")->fetchColumn(),
         'rosters_pending' => $pdo->query("SELECT COUNT(*) FROM roster_assignments WHERE status='Suggested'")->fetchColumn(),
+        'unassigned_flights' => $pdo->query("SELECT COUNT(*) FROM flights_master WHERE aircraft_id IS NULL")->fetchColumn(),
     ];
 
     // Fetch recent rosters
@@ -31,6 +32,23 @@ include '../includes/layout_header.php';
 
 <div class="scrollable-panel space-y-8">
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <?php if ($stats['unassigned_flights'] > 0): ?>
+            <div class="md:col-span-3 glass-panel p-4 rounded-2xl border-l-4 border-rose-500 bg-rose-500/5 flex items-center justify-between mb-2">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-rose-500/20 flex items-center justify-center text-rose-500">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <div>
+                        <div class="text-white font-bold text-sm">Existem <?php echo $stats['unassigned_flights']; ?> rotas sem aeronaves atribuídas!</div>
+                        <div class="text-[10px] text-slate-400">Isso impede que os pilotos possam assumir estes voos.</div>
+                    </div>
+                </div>
+                <a href="bulk_assign_aircraft.php" class="bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition">
+                    Resolver Agora
+                </a>
+            </div>
+        <?php endif; ?>
+
         <div class="glass-panel p-6 rounded-3xl border-l-4 border-indigo-500 relative overflow-hidden group hover:bg-white/5 transition">
             <div class="absolute right-0 top-0 opacity-10 transform translate-x-4 -translate-y-4 group-hover:scale-110 transition duration-500">
                 <i class="fas fa-users text-8xl text-white"></i>

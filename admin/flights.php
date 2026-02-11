@@ -409,7 +409,14 @@ include '../includes/layout_header.php';
     </div>
     <div id="malha-shelf" class="bottom-shelf glass-panel rounded-3xl overflow-hidden minimized">
         <div class="p-4 border-b border-white/10 flex justify-between items-center shrink-0 cursor-pointer" onclick="toggleMalha(event)">
-            <div class="flex items-center gap-4"><h3 class="text-white font-bold text-sm">Malha Operacional</h3><div class="bg-white/5 border border-white/10 rounded-full px-3 py-1 text-[10px] text-slate-400 font-bold"><?php echo count($flights); ?> ATIVAS</div><i id="malha-icon" class="fas fa-chevron-up text-xs text-slate-500 transition-transform duration-300"></i></div>
+            <div class="flex items-center gap-4">
+                <h3 class="text-white font-bold text-sm">Malha Operacional</h3>
+                <div class="bg-white/5 border border-white/10 rounded-full px-3 py-1 text-[10px] text-slate-400 font-bold"><?php echo count($flights); ?> ATIVAS</div>
+                <a href="bulk_assign_aircraft.php" class="bg-indigo-500/20 hover:bg-indigo-500 text-indigo-400 hover:text-white border border-indigo-500/30 px-3 py-1 rounded-full text-[10px] font-bold transition flex items-center gap-1" onclick="event.stopPropagation()">
+                    <i class="fas fa-magic"></i> Atribuição em Lote
+                </a>
+                <i id="malha-icon" class="fas fa-chevron-up text-xs text-slate-500 transition-transform duration-300"></i>
+            </div>
             <div class="relative w-64"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i><input type="text" id="flightSearch" placeholder="Busca rápida..." class="w-full bg-white/5 border border-white/10 rounded-full pl-9 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"></div>
         </div>
         <div class="flex-1 overflow-y-auto">
