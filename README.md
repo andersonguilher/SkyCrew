@@ -2,6 +2,15 @@
 
 A complete Crew Management System with Authentication, Pilot Dashboard, and Admin Panel.
 
+## 📝 Changelog
+
+### [2026-02-11 19:24:54]
+- **Mapas e Rotas**: Implementação de rotas via SimBrief e exibição de ICAOs.
+- **Interface**: Correção de animações na malha operacional e melhoria na exibição de horários.
+- **Filtros**: Sincronização entre o filtro de ICAO e a lista de voos.
+- **Logística**: Prevenção de conflitos de aeronaves em voos simultâneos.
+- **Admin**: Melhorias no gerenciamento de pilotos e aeronaves.
+
 ## Setup Instructions
 
 1. **Database Update**:

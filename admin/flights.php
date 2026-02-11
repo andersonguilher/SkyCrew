@@ -184,14 +184,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Fetch Data
+// Fetch Data Enriched for Map and List
 $flights = $pdo->query("
     SELECT fm.*, fl.registration,
+    a1.latitude_deg as dep_lat, a1.longitude_deg as dep_lon,
+    a2.latitude_deg as arr_lat, a2.longitude_deg as arr_lon,
     (SELECT status FROM roster_assignments WHERE flight_id = fm.id ORDER BY assigned_at DESC LIMIT 1) as roster_status
     FROM flights_master fm 
     LEFT JOIN fleet fl ON fm.aircraft_id = fl.id 
+    LEFT JOIN airports a1 ON fm.dep_icao = a1.ident
+    LEFT JOIN airports a2 ON fm.arr_icao = a2.ident
     ORDER BY fm.flight_number
 ")->fetchAll();
+
+// 1. Performance: By default, only load Accepted flights to keep map and DOM light
+$showFullNetwork = isset($_GET['full_network']);
+$mapFlights = array_filter($flights, function($f) use ($showFullNetwork) {
+    return $showFullNetwork || $f['roster_status'] === 'Accepted';
+});
+
+$initialMapData = json_encode(array_values($mapFlights));
+
+// Logic for table rendering: matches map for consistency and speed
+$tableFlights = $mapFlights;
+$totalFlightsCount = count($flights);
 
 $fleet = $pdo->query("
     SELECT f.*, 
@@ -213,8 +229,8 @@ $nextNum = $maxNum + 1;
 
 $pageTitle = "Painel de Voos - SkyCrew OS";
 $extraHead = '
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="../assets/libs/leaflet/leaflet.css" />
+    <script src="../assets/libs/leaflet/leaflet.js"></script>
     <style>
         #routeMap { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
         .leaflet-container { background: #0c0e17 !important; }
@@ -433,7 +449,12 @@ include '../includes/layout_header.php';
         <div class="p-4 border-b border-white/10 flex justify-between items-center shrink-0 cursor-pointer" onclick="toggleMalha(event)">
             <div class="flex items-center gap-4">
                 <h3 class="text-white font-bold text-sm">Malha Operacional</h3>
-                <div id="flight-count-badge" class="bg-white/5 border border-white/10 rounded-full px-3 py-1 text-[10px] text-slate-400 font-bold"><?php echo count($flights); ?> ATIVAS</div>
+                <div id="flight-count-badge" class="bg-white/5 border border-white/10 rounded-full px-3 py-1 text-[10px] text-slate-400 font-bold"><?php echo count($tableFlights); ?> / <?php echo $totalFlightsCount; ?></div>
+                <?php if (!$showFullNetwork): ?>
+                    <a href="?full_network=1" class="bg-indigo-500/10 hover:bg-indigo-500/30 text-indigo-400 border border-indigo-500/20 px-3 py-1 rounded-full text-[10px] font-bold transition">
+                        <i class="fas fa-network-wired mr-1"></i> Carregar Malha Completa
+                    </a>
+                <?php endif; ?>
                 <a href="bulk_assign_aircraft.php" class="bg-indigo-500/20 hover:bg-indigo-500 text-indigo-400 hover:text-white border border-indigo-500/30 px-3 py-1 rounded-full text-[10px] font-bold transition flex items-center gap-1" onclick="event.stopPropagation()">
                     <i class="fas fa-magic"></i> Atribuição em Lote
                 </a>
@@ -447,7 +468,7 @@ include '../includes/layout_header.php';
                     <tr><th class="px-6 py-3">Número</th><th class="px-6 py-3 text-center">Trecho</th><th class="px-6 py-3">Rota</th><th class="px-6 py-3">UTC Window</th><th class="px-6 py-3">Dados (Pax/Fuel)</th><th class="px-6 py-3">Equipamento</th><th class="px-6 py-3">EET</th><th class="px-6 py-3 text-right pr-8">Ação</th></tr>
                 </thead>
                 <tbody class="divide-y divide-white/5">
-                    <?php foreach ($flights as $f): ?>
+                    <?php foreach ($tableFlights as $f): ?>
                             <tr class="hover:bg-white/5 transition group cursor-pointer border-l-2 border-transparent" 
                                 data-status="<?php echo $f['roster_status']; ?>"
                                 onclick="selectFlight(this, '<?php echo $f['flight_number']; ?>')" 
@@ -487,9 +508,11 @@ include '../includes/layout_header.php';
     let debounceTimer, map, mapObjects = {}, currentBounds = null, plannedRouteLayer = null;
     let isAnimating = false;
     let airportCoordinates = {}; // Lookup for airport positions
-    let allRouteData = []; // Raw data from API
-    let mapMode = 'roster'; // 'roster' (Accepted) or 'all'
+    let allRouteData = <?php echo $initialMapData; ?>; 
+    let isFullNetworkLoaded = <?php echo $showFullNetwork ? 'true' : 'false'; ?>;
+    let mapMode = 'roster'; 
     const routeLayerGroup = L.layerGroup();
+    const activeFlights = new Set(); // Track only flights currently animating
     const resetTimers = {}; // Store timers for debounce
 
     // SimBrief Modal Logic
@@ -669,7 +692,10 @@ include '../includes/layout_header.php';
         
         routeLayerGroup.addTo(map);
         plannedRouteLayer = L.layerGroup().addTo(map); // Draft Route Layer
-        loadMapRoutes();
+        
+        // Initial Refresh using pre-baked data (Only Accepted)
+        refreshMapLayers();
+
         if (typeof planeAnim !== 'undefined') cancelAnimationFrame(planeAnim);
         animatePlanes();
     }
@@ -779,16 +805,28 @@ include '../includes/layout_header.php';
     }
 
     async function loadMapRoutes() {
-        const r = await fetch('../api/get_route_map.php');
-        allRouteData = await r.json();
-        refreshMapLayers();
+        if (isFullNetworkLoaded) return;
+        try {
+            const r = await fetch('../api/get_route_map.php');
+            const data = await r.json();
+            if (Array.isArray(data)) {
+                allRouteData = data;
+                isFullNetworkLoaded = true;
+                refreshMapLayers();
+            }
+        } catch(e) { console.error(e); }
     }
 
     function toggleMapMode(mode) {
         mapMode = mode;
         document.getElementById('toggleRoster').classList.toggle('active', mode === 'roster');
         document.getElementById('toggleAll').classList.toggle('active', mode === 'all');
-        refreshMapLayers();
+        
+        if (mode === 'all' && !isFullNetworkLoaded) {
+            loadMapRoutes();
+        } else {
+            refreshMapLayers();
+        }
         updateMapFilters();
     }
 
@@ -854,44 +892,37 @@ include '../includes/layout_header.php';
         if (!allRouteData || !Array.isArray(allRouteData)) return;
         const filterIcao = document.getElementById('mapIcaoFilter').value.trim().toUpperCase();
         
-        // Clean up existing objects
-        for (const fnum in mapObjects) {
-            if (mapObjects[fnum].plane) mapObjects[fnum].plane.remove();
-            if (mapObjects[fnum].line) mapObjects[fnum].line.remove();
-            if (mapObjects[fnum].markers) mapObjects[fnum].markers.forEach(m => m.remove());
-            if (mapObjects[fnum].waypointMarkers) mapObjects[fnum].waypointMarkers.forEach(m => m.remove());
-        }
-        
+        // Clean up existing objects - Layer group handles most of it
         routeLayerGroup.clearLayers();
+        activeFlights.clear();
         mapObjects = {};
         airportMarkers = []; 
         const airportData = {}; 
         const b = [];
         
-        // Filter routes
+        // 1. Filter and Build Indices
+        const arrivingAt = {};
         const filteredRoutes = allRouteData.filter(x => {
-            // Mode filter
             if (mapMode === 'roster' && x.roster_status !== 'Accepted') return false;
             
-            // ICAO filter (Partial Match)
             if (filterIcao) {
                 const dep = (x.dep_icao || "").toUpperCase();
                 const arr = (x.arr_icao || "").toUpperCase();
                 if (!dep.includes(filterIcao) && !arr.includes(filterIcao)) return false;
             }
-            
             return true;
         });
 
-        // 1. Map Coordinates and Group Departing Flights
         filteredRoutes.forEach(x => {
+            if (!arrivingAt[x.arr_icao]) arrivingAt[x.arr_icao] = [];
+            arrivingAt[x.arr_icao].push(x.flight_number);
+
             if (x.dep_lat && x.arr_lat) {
                 const p1 = [parseFloat(x.dep_lat), parseFloat(x.dep_lon)]; 
                 const p2 = [parseFloat(x.arr_lat), parseFloat(x.arr_lon)];
                 
                 airportCoordinates[x.dep_icao] = p1;
                 airportCoordinates[x.arr_icao] = p2;
-                
                 b.push(p1, p2);
                 
                 if (!airportData[x.dep_icao]) airportData[x.dep_icao] = { pos: p1, departing: [], hasAccepted: false };
@@ -901,7 +932,6 @@ include '../includes/layout_header.php';
                     airportData[x.dep_icao].hasAccepted = true;
                     airportData[x.arr_icao].hasAccepted = true;
                 }
-                
                 airportData[x.dep_icao].departing.push(x.flight_number);
             }
         });
@@ -909,17 +939,16 @@ include '../includes/layout_header.php';
         // 2. Draw Lines 
         filteredRoutes.forEach(x => {
             if (x.dep_lat && x.arr_lat) {
-                const p1 = [parseFloat(x.dep_lat), parseFloat(x.dep_lon)];
-                const p2 = [parseFloat(x.arr_lat), parseFloat(x.arr_lon)];
-                
+                const p1 = airportCoordinates[x.dep_icao];
+                const p2 = airportCoordinates[x.arr_icao];
                 const directPath = [p1, p2];
                 let detailedPath = null;
+                
                 if (x.route_waypoints) {
                     try {
                         const wps = JSON.parse(x.route_waypoints);
                         if (Array.isArray(wps) && wps.length > 0) {
                             detailedPath = wps.map(p => [p.lat, p.lng]);
-                            // Ensure connection to airports
                             if (map.distance(detailedPath[0], p1) > 200) detailedPath.unshift(p1);
                             if (map.distance(detailedPath[detailedPath.length - 1], p2) > 200) detailedPath.push(p2);
                         }
@@ -927,7 +956,6 @@ include '../includes/layout_header.php';
                 }
 
                 const isAccepted = x.roster_status === 'Accepted';
-                
                 const line = L.polyline(directPath, { 
                     color: isAccepted ? '#06b6d4' : '#94a3b8', 
                     weight: isAccepted ? 2 : 1, 
@@ -937,25 +965,12 @@ include '../includes/layout_header.php';
                     pane: 'lines' 
                 }).addTo(routeLayerGroup);
 
-                const dy = p2[0] - p1[0];
-                const dx = p2[1] - p1[1];
-                let angle = (Math.atan2(dx, dy) * 180 / Math.PI); 
-                
-                const planeIcon = L.divIcon({
-                    className: 'plane-node',
-                    html: `<svg class="plane-svg plane-icon" viewBox="0 0 24 24" style="transform: rotate(${angle}deg);"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>`,
-                    iconSize: [24, 24],
-                    iconAnchor: [12, 12] 
-                });
-
-                const plane = L.marker(p1, { icon: planeIcon, pane: 'planes', interactive: false, opacity: 0 }).addTo(routeLayerGroup);
-                
                 mapObjects[x.flight_number] = { 
                     line, 
-                    directPath: directPath,
+                    directPath,
                     detailedPath: detailedPath || directPath,
                     markers: [], 
-                    plane,
+                    plane: null, // Don't create yet to save memory/DOM
                     p1, p2,
                     progress: 0, 
                     speed: 0.002, 
@@ -993,11 +1008,17 @@ include '../includes/layout_header.php';
 
             airportMarkers.push(marker);
 
-            filteredRoutes.forEach(x => {
-                if (x.dep_icao === icao || x.arr_icao === icao) {
-                    if (mapObjects[x.flight_number]) mapObjects[x.flight_number].markers.push(marker);
-                }
+            // Associate with map objects
+            data.departing.forEach(fnum => {
+                if (mapObjects[fnum]) mapObjects[fnum].markers.push(marker);
             });
+            if (arrivingAt[icao]) {
+                arrivingAt[icao].forEach(fnum => {
+                    if (mapObjects[fnum] && !mapObjects[fnum].markers.includes(marker)) {
+                        mapObjects[fnum].markers.push(marker);
+                    }
+                });
+            }
         }
         
         updateMarkerSize();
@@ -1007,7 +1028,6 @@ include '../includes/layout_header.php';
             fitMapToRoutes();
         }
 
-        // Re-highlight selection if it exists after map refresh
         if (selectedFlight && mapObjects[selectedFlight]) {
             highlightRoute(selectedFlight, true, '#ffffff', true);
         }
@@ -1142,7 +1162,7 @@ include '../includes/layout_header.php';
         }
 
         const obj = mapObjects[fnum];
-        if (obj && obj.plane) {
+        if (obj) {
             // Swap geometry based on hover target (Row=Direct, RouteCell=Detailed)
             const path = useDetailed ? obj.detailedPath : obj.directPath;
             obj.line.setLatLngs(path);
@@ -1150,10 +1170,25 @@ include '../includes/layout_header.php';
             obj.line.setStyle({ color: color, weight: color === '#ffffff' ? 4 : 2, opacity: 1, dashArray: null });
             obj.line.bringToFront();
             
-            // Activate Plane Animation
+            // Activate Plane Animation & Create Marker if needed
             if (!obj.active) {
                 obj.active = true;
+                activeFlights.add(fnum);
                 if (obj.progress < 0.05) obj.progress = 0.05; 
+            }
+
+            if (!obj.plane) {
+                const dy = obj.p2[0] - obj.p1[0];
+                const dx = obj.p2[1] - obj.p1[1];
+                let angle = (Math.atan2(dx, dy) * 180 / Math.PI); 
+
+                const planeIcon = L.divIcon({
+                    className: 'plane-node',
+                    html: `<svg class="plane-svg plane-icon" viewBox="0 0 24 24" style="transform: rotate(${angle}deg);"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>`,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12] 
+                });
+                obj.plane = L.marker(obj.p1, { icon: planeIcon, pane: 'planes', interactive: false, opacity: 0 }).addTo(routeLayerGroup);
             }
             
             // Ensure plane is visible immediately if highlighted
@@ -1260,19 +1295,13 @@ include '../includes/layout_header.php';
                 
                 // Deactivate Plane Animation
                 obj.active = false;
+                activeFlights.delete(fnum); // Remove from active flights
                 obj.progress = 0;
                 
-                const el = obj.plane.getElement();
-                if (el) {
-                    obj.plane.setZIndexOffset(0); 
-                    obj.plane.setOpacity(0); // Hide immediately
-                    const icon = el.querySelector('.plane-icon');
-                    if (icon) {
-                        // icon.classList.remove('plane-visible');
-                        icon.classList.remove('plane-highlight');
-                    }
-                }
-
+                // Remove the plane marker from the map
+                obj.plane.remove();
+                obj.plane = null; // Set to null so it can be recreated if needed
+                
                 if (updateMarkers) {
                     obj.markers.forEach(m => m.setStyle({ color: '#818cf8', radius: 6, weight: 2 }));
                 }
@@ -1328,26 +1357,23 @@ include '../includes/layout_header.php';
     }
 
     function animatePlanes() {
-        // Wrap in try-catch to prevent loop death
+        if (!map) return;
         try {
-            for (const fnum in mapObjects) {
+            activeFlights.forEach(fnum => {
                 const obj = mapObjects[fnum];
-                if (obj.plane && obj.active) {
+                if (obj && obj.plane && obj.active) {
                     obj.progress += obj.speed;
                     if (obj.progress >= 1) obj.progress = 0;
                     
-                    const currentPath = obj.line.getLatLngs(); // Uses currently active path (Detailed or Direct)
+                    const currentPath = obj.line.getLatLngs(); 
 
                     if (Array.isArray(currentPath) && currentPath.length > 2) {
-                        // Detailed Path Logic
                         const pt = getPointAtLength(currentPath, obj.progress);
                         obj.plane.setLatLng([pt.lat, pt.lng]);
-                        // Rotate Icon
                         const el = obj.plane.getElement()?.querySelector('.plane-svg');
                         if (el) el.style.transform = `rotate(${pt.angle}deg)`;
                         
                     } else {
-                        // Interpolate in pixel space for simple direct routes too
                         const p1_p = map.latLngToLayerPoint(obj.p1);
                         const p2_p = map.latLngToLayerPoint(obj.p2);
                         const p_p = L.point(
@@ -1362,18 +1388,16 @@ include '../includes/layout_header.php';
                         if (el) el.style.transform = `rotate(${angle}deg)`;
                     }
 
-                    // Fade In / Out Logic (Only for background non-selected flights)
+                    // Fade In / Out Logic
                     let op = 1;
                     const isSelected = (selectedFlight === fnum);
-                    
                     if (!isSelected) {
                         if (obj.progress < 0.15) op = obj.progress / 0.15;
                         else if (obj.progress > 0.85) op = (1 - obj.progress) / 0.15;
                     }
-                    
                     obj.plane.setOpacity(op);
                 }
-            }
+            });
         } catch (e) {
             console.error("Animation Error:", e);
         }
