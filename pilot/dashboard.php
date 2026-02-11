@@ -60,7 +60,13 @@ if ($nextRank) {
 
 $stmt = $pdo->prepare("SELECT COUNT(*) FROM pilot_preferences WHERE pilot_id = ?");
 $stmt->execute([$pilotId]);
-$hasPreferences = $stmt->fetchColumn() > 0;
+$hasSchedulePref = $stmt->fetchColumn() > 0;
+
+$stmt = $pdo->prepare("SELECT COUNT(*) FROM pilot_aircraft_prefs WHERE pilot_id = ?");
+$stmt->execute([$pilotId]);
+$hasAircraftPref = $stmt->fetchColumn() > 0;
+
+$hasOperationalParams = $hasSchedulePref && $hasAircraftPref;
 
 // Fetch Roster
 $stmt = $pdo->prepare("

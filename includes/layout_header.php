@@ -5,6 +5,19 @@ $sysSettings = getSystemSettings($pdo);
 $role = $_SESSION['role'] ?? 'pilot';
 $is_admin = ($role === 'admin');
 $current_page = basename($_SERVER['PHP_SELF']);
+
+$showParamsAlert = false;
+if (!$is_admin && isset($pdo)) {
+    $hid = getCurrentPilotId($pdo);
+    if ($hid) {
+        $stmt = $pdo->prepare("SELECT 
+            (SELECT 1 FROM pilot_preferences WHERE pilot_id = ? LIMIT 1) as has_sched,
+            (SELECT 1 FROM pilot_aircraft_prefs WHERE pilot_id = ? LIMIT 1) as has_ac");
+        $stmt->execute([$hid, $hid]);
+        $checkRes = $stmt->fetch();
+        $showParamsAlert = (!$checkRes || !$checkRes['has_sched'] || !$checkRes['has_ac']);
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -92,8 +105,21 @@ $current_page = basename($_SERVER['PHP_SELF']);
                             <i class="fas fa-wallet"></i>
                             <span class="nav-label">Pagamentos</span>
                         </a>
-                        <a href="preferences.php" class="nav-button <?php echo $current_page == 'preferences.php' ? 'active' : ''; ?>" title="Preferências">
-                            <i class="fas fa-sliders-h"></i>
+                        <a href="preferences.php" class="nav-button group/prefs <?php echo $current_page == 'preferences.php' ? 'active' : ''; ?>" title="Preferências">
+                            <div class="relative">
+                                <i class="fas fa-sliders-h"></i>
+                                <?php if ($showParamsAlert): ?>
+                                    <div class="absolute -top-1 -right-1 w-2 h-2 bg-rose-500 rounded-full animate-pulse ring-2 ring-[#0c0e17]"></div>
+                                    
+                                    <!-- Tooltip / Alerta -->
+                                    <div class="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-48 pointer-events-none transition-all duration-300 opacity-100 translate-y-0">
+                                        <div class="bg-rose-600 text-white text-[10px] font-bold py-2 px-3 rounded-lg shadow-xl text-center uppercase tracking-tighter">
+                                            Preencher Parâmetros
+                                            <div class="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-rose-600"></div>
+                                        </div>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
                             <span class="nav-label">Prefs</span>
                         </a>
                     <?php endif; ?>
