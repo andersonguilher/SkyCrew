@@ -23,12 +23,12 @@ $is_admin = ($is_admin_privileged && $current_dir === 'admin');
 $is_actually_admin = $is_admin_privileged;
 
 // Fetch Pilot Info for the top bar (Available on all pages)
-$pilot = ['name' => 'Usuário', 'profile_image' => ''];
+$topBarPilot = ['name' => 'Usuário', 'profile_image' => ''];
 if (isset($pdo) && isset($_SESSION['user_id'])) {
     $stmt = $pdo->prepare("SELECT name, profile_image FROM pilots WHERE user_id = ?");
     $stmt->execute([$_SESSION['user_id']]);
     $pData = $stmt->fetch();
-    if ($pData) $pilot = $pData;
+    if ($pData) $topBarPilot = $pData;
 }
 
 $showParamsAlert = false;
@@ -172,10 +172,10 @@ if (!$is_admin && isset($pdo)) {
                 <div id="top-clock" class="text-white font-mono text-xs tracking-widest bg-white/5 px-3 py-1 rounded-full border border-white/10 text-indigo-300">--:--:-- UTC</div>
                 
                 <div class="flex items-center gap-3 bg-white/5 pl-3 pr-1 py-1 rounded-full border border-white/10">
-                    <span class="text-[10px] font-bold text-slate-300 uppercase tracking-widest"><?php echo $pilot['name'] ?? 'Usuário'; ?></span>
+                    <span class="text-[10px] font-bold text-slate-300 uppercase tracking-widest"><?php echo $topBarPilot['name'] ?? 'Usuário'; ?></span>
                     <div class="h-8 w-8 rounded-full border border-indigo-500/50 p-0.5 overflow-hidden">
-                        <?php if (!empty($pilot['profile_image'])): ?>
-                            <img src="<?php echo $pilot['profile_image']; ?>" class="w-full h-full rounded-full object-cover">
+                        <?php if (!empty($topBarPilot['profile_image'])): ?>
+                            <img src="<?php echo $topBarPilot['profile_image']; ?>" class="w-full h-full rounded-full object-cover">
                         <?php else: ?>
                             <div class="w-full h-full rounded-full bg-slate-800 flex items-center justify-center text-slate-400 text-xs">
                                 <i class="fas fa-user-<?php echo $is_admin ? 'shield' : 'pilot'; ?>"></i>
