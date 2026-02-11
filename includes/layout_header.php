@@ -71,6 +71,10 @@ $current_page = basename($_SERVER['PHP_SELF']);
                             <i class="fas fa-wallet"></i>
                             <span class="nav-label">Financeiro</span>
                         </a>
+                        <a href="ranks.php" class="nav-button <?php echo $current_page == 'ranks.php' ? 'active' : ''; ?>" title="Patentes">
+                            <i class="fas fa-medal"></i>
+                            <span class="nav-label">Patentes</span>
+                        </a>
                         <a href="settings.php" class="nav-button <?php echo $current_page == 'settings.php' ? 'active' : ''; ?>" title="Configurações">
                             <i class="fas fa-cog"></i>
                             <span class="nav-label">Config</span>

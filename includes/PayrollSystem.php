@@ -57,7 +57,7 @@ class PayrollSystem
             $monthStr = date('Y-m'); // Corrente
 
         // 1. Get Pilot & Rank
-        $stmt = $this->pdo->prepare("SELECT p.*, r.pay_rate FROM pilots p LEFT JOIN ranks r ON p.`rank` = r.rank_name WHERE p.id = ?");
+        $stmt = $this->pdo->prepare("SELECT p.*, r.pay_rate, r.base_salary FROM pilots p LEFT JOIN ranks r ON p.`rank` = r.rank_name WHERE p.id = ?");
         $stmt->execute([$pilotId]);
         $pilot = $stmt->fetch();
 
@@ -76,16 +76,8 @@ class PayrollSystem
 
         $flightPay = ($activity['total_hours'] ?? 0) * ($pilot['pay_rate'] ?? 15);
 
-        // Base Salary (Fixo por patente? Vamos assumir fixo universal ou escalonado.
-        // Simplificação: Cadet=1500, Junior=2500, Senior=4000, Captain=7000)
-        $baseSalaries = [
-            'Cadet' => 1500,
-            'Junior First Officer' => 2500,
-            'Senior First Officer' => 4000,
-            'Captain' => 7000,
-            'Senior Captain' => 9000
-        ];
-        $baseSalary = $baseSalaries[$pilot['rank']] ?? 1500;
+        // Base Salary fetch from DB (joined in step 1)
+        $baseSalary = $pilot['base_salary'] ?? 1500;
 
         // 3. Calculate Idle Cost (Ociosidade por voo perdido)
         // Regra: Se tem voo na escala e não voa, gera custo operacional (hotel/comida)
