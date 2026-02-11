@@ -1,35 +1,88 @@
 <?php
 require_once 'db_connect.php';
+require_once 'includes/PassHash.php';
 session_start();
 
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email = $_POST['email'] ?? '';
+    $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
 
     if (!empty($email) && !empty($password)) {
         try {
+            $authenticated = false;
+            $user_to_login = null;
+
+            // 1. Tentar Login Local
             $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
             $stmt->execute([$email]);
-            $user = $stmt->fetch();
+            $local_user = $stmt->fetch();
 
-            if ($user && password_verify($password, $user['password'])) {
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['role'] = $user['role'];
-                $_SESSION['email'] = $user['email'];
-
-                if ($user['role'] === 'admin') {
-                    header("Location: admin/dashboard.php");
-                } else {
-                    header("Location: pilot/dashboard.php");
-                }
-                exit;
+            if ($local_user && password_verify($password, $local_user['password'])) {
+                $user_to_login = $local_user;
+                $authenticated = true;
             } else {
-                $error = "E-mail ou senha inválidos.";
+                // 2. Tentar Login Externo (WordPress + Dados_dos_Pilotos)
+                $wp_pdo = new PDO("mysql:host=" . DB_SERVERNAME . ";dbname=" . DB_PILOTOS_NAME . ";charset=utf8mb4", DB_PILOTOS_USER, DB_PILOTOS_PASS);
+                $wp_pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+                
+                $stmt = $wp_pdo->prepare("SELECT ID, user_login, user_pass, user_email FROM wp_users WHERE user_login = ? OR user_email = ?");
+                $stmt->execute([$email, $email]);
+                $wp_user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if ($wp_user) {
+                    $hasher = new PasswordHash(8, true);
+                    if ($hasher->CheckPassword($password, $wp_user['user_pass'])) {
+                        // Verificar se está validado na view
+                        $stmt = $wp_pdo->prepare("SELECT * FROM Dados_dos_Pilotos WHERE id_piloto = ? AND validado = 'true'");
+                        $stmt->execute([$wp_user['ID']]);
+                        $pilot_data = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                        if ($pilot_data) {
+                            // Integrar usuário WP no banco local (Sincronização)
+                            $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
+                            $stmt->execute([$wp_user['user_email']]);
+                            $local_sync_user = $stmt->fetch();
+
+                            if (!$local_sync_user) {
+                                $stmt = $pdo->prepare("INSERT INTO users (email, password, role) VALUES (?, ?, 'pilot')");
+                                $random_pass = password_hash(bin2hex(random_bytes(16)), PASSWORD_DEFAULT);
+                                $stmt->execute([$wp_user['user_email'], $random_pass]);
+                                $userId = $pdo->lastInsertId();
+                                
+                                // Criar registro de pilot local
+                                $fullName = trim(($pilot_data['first_name'] ?? '') . ' ' . ($pilot_data['last_name'] ?? ''));
+                                if (empty($fullName)) $fullName = $wp_user['user_login'];
+                                $stmt = $pdo->prepare("INSERT INTO pilots (user_id, name, profile_image, total_hours, current_base) VALUES (?, ?, ?, ?, 'SBGR')");
+                                $stmt->execute([$userId, $fullName, $pilot_data['foto_perfil'] ?? null, (float)($pilot_data['horas_kafly'] ?? 0)]);
+                                
+                                $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+                                $stmt->execute([$userId]);
+                                $user_to_login = $stmt->fetch();
+                            } else {
+                                $user_to_login = $local_sync_user;
+                            }
+                            $authenticated = true;
+                        } else {
+                            $error = "Sua conta Kafly ainda não foi validada como piloto.";
+                        }
+                    }
+                }
+            }
+
+            if ($authenticated && $user_to_login) {
+                $_SESSION['user_id'] = $user_to_login['id'];
+                $_SESSION['role'] = $user_to_login['role'];
+                $_SESSION['email'] = $user_to_login['email'];
+
+                header("Location: " . ($user_to_login['role'] === 'admin' ? 'admin/dashboard.php' : 'pilot/dashboard.php'));
+                exit;
+            } elseif (empty($error)) {
+                $error = "Credenciais inválidas ou conta não encontrada.";
             }
         } catch (Exception $e) {
-            $error = "Erro no banco de dados: " . $e->getMessage();
+            $error = "Erro no sistema: " . $e->getMessage();
         }
     } else {
         $error = "Por favor, preencha todos os campos.";
@@ -78,7 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <form method="POST" class="space-y-6">
                 <div class="space-y-1">
                     <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-4">Credential Identity</label>
-                    <input type="email" name="email" class="form-input" placeholder="E-mail de Acesso" required>
+                    <input type="text" name="email" class="form-input" placeholder="E-mail ou Usuário Kafly" required>
                 </div>
                 <div class="space-y-1">
                     <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-4">Secure Password</label>
@@ -91,6 +144,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </button>
                 </div>
             </form>
+
+
 
             <div class="pt-4 border-t border-white/5 space-y-3">
                 <p class="text-[9px] text-slate-600 font-bold uppercase tracking-widest text-center">Test Environment Access</p>

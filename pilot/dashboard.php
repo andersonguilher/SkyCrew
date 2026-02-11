@@ -78,6 +78,38 @@ include '../includes/layout_header.php';
 ?>
 
 <div class="flex-1 flex flex-col space-y-6 overflow-hidden">
+    <!-- Welcome Header -->
+    <div class="flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-6">
+            <div class="relative">
+                <div class="w-20 h-20 rounded-3xl border-2 border-indigo-500/30 p-1.5 glass-panel">
+                    <div class="w-full h-full rounded-2xl overflow-hidden bg-slate-800 flex items-center justify-center">
+                        <?php if (!empty($pilot['profile_image'])): ?>
+                            <img src="<?php echo $pilot['profile_image']; ?>" class="w-full h-full object-cover">
+                        <?php else: ?>
+                            <i class="fas fa-user-pilot text-slate-600 text-3xl"></i>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <div class="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-emerald-500 border-4 border-[#0c0e17] flex items-center justify-center" title="Online">
+                    <div class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></div>
+                </div>
+            </div>
+            <div>
+                <h1 class="text-3xl font-black text-white tracking-tight">Bem-vindo, <span class="text-indigo-400"><?php echo htmlspecialchars(explode(' ', $pilot['name'])[0]); ?></span></h1>
+                <p class="text-slate-500 text-[10px] font-bold uppercase tracking-[0.3em] flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-indigo-500"></span> Comandante em Operação
+                </p>
+            </div>
+        </div>
+        <div class="flex gap-4">
+            <div class="glass-panel px-6 py-3 rounded-2xl border border-white/5 text-right">
+                <p class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Último Login</p>
+                <p class="text-xs font-mono text-indigo-300"><?php echo date('H:i'); ?> <span class="text-slate-500">Local</span></p>
+            </div>
+        </div>
+    </div>
+
     <!-- Stats Row -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-6 shrink-0">
         <!-- Rank Card -->

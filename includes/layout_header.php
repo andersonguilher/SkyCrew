@@ -97,9 +97,20 @@ $current_page = basename($_SERVER['PHP_SELF']);
             </div>
             <div class="flex items-center gap-4">
                 <div id="top-clock" class="text-white font-mono text-xs tracking-widest bg-white/5 px-3 py-1 rounded-full border border-white/10 text-indigo-300">--:--:-- UTC</div>
-                <div class="h-8 w-8 rounded-full border border-indigo-500/50 p-0.5">
-                    <div class="w-full h-full rounded-full bg-slate-800 flex items-center justify-center text-slate-400 text-xs"><i class="fas fa-user-<?php echo $is_admin ? 'shield' : 'pilot'; ?>"></i></div>
+                
+                <div class="flex items-center gap-3 bg-white/5 pl-3 pr-1 py-1 rounded-full border border-white/10">
+                    <span class="text-[10px] font-bold text-slate-300 uppercase tracking-widest"><?php echo $pilot['name'] ?? 'Usuário'; ?></span>
+                    <div class="h-8 w-8 rounded-full border border-indigo-500/50 p-0.5 overflow-hidden">
+                        <?php if (!empty($pilot['profile_image'])): ?>
+                            <img src="<?php echo $pilot['profile_image']; ?>" class="w-full h-full rounded-full object-cover">
+                        <?php else: ?>
+                            <div class="w-full h-full rounded-full bg-slate-800 flex items-center justify-center text-slate-400 text-xs">
+                                <i class="fas fa-user-<?php echo $is_admin ? 'shield' : 'pilot'; ?>"></i>
+                            </div>
+                        <?php endif; ?>
+                    </div>
                 </div>
+
                 <a href="../logout.php" class="text-slate-400 hover:text-white transition text-[10px] uppercase font-bold tracking-widest">Sair</a>
             </div>
         </div>
