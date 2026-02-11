@@ -115,6 +115,10 @@ if (!$is_admin && isset($pdo)) {
                             <i class="fas fa-medal"></i>
                             <span class="nav-label">Patentes</span>
                         </a>
+                        <a href="expense_venues.php" class="nav-button <?php echo $current_page == 'expense_venues.php' ? 'active' : ''; ?>" title="Locais de Despesa">
+                            <i class="fas fa-map-marker-alt"></i>
+                            <span class="nav-label">Locais</span>
+                        </a>
                         <a href="settings.php" class="nav-button <?php echo $current_page == 'settings.php' ? 'active' : ''; ?>" title="Configurações">
                             <i class="fas fa-cog"></i>
                             <span class="nav-label">Config</span>

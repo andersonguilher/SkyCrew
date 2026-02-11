@@ -273,7 +273,7 @@ class PayrollSystem
         }
 
         // 1. Hotel Summary
-        $totalHotel = $days * $pHeight;
+        $totalHotel = $days * $pHotel;
 
         $desc[] = "<div class='mb-2 pb-2 border-b border-gray-100'>";
         $desc[] = "<div class='font-bold text-gray-700 text-xs flex justify-between items-center'>";
