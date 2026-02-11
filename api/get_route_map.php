@@ -9,6 +9,7 @@ try {
     // Get all flights with their airport coordinates
     $stmt = $pdo->query("
         SELECT 
+            f.id,
             f.flight_number, 
             f.dep_icao, 
             f.arr_icao, 
@@ -18,7 +19,10 @@ try {
             a2.longitude_deg as arr_lon,
             fl.registration,
             fl.icao_code as ac_type,
-            f.route_waypoints
+            f.dep_time,
+            f.arr_time,
+            f.route_waypoints,
+            (SELECT status FROM roster_assignments WHERE flight_id = f.id ORDER BY assigned_at DESC LIMIT 1) as roster_status
         FROM flights_master f
         LEFT JOIN airports a1 ON f.dep_icao = a1.ident
         LEFT JOIN airports a2 ON f.arr_icao = a2.ident

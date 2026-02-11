@@ -185,7 +185,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Fetch Data
 $flights = $pdo->query("
-    SELECT fm.*, fl.registration 
+    SELECT fm.*, fl.registration,
+    (SELECT status FROM roster_assignments WHERE flight_id = fm.id ORDER BY assigned_at DESC LIMIT 1) as roster_status
     FROM flights_master fm 
     LEFT JOIN fleet fl ON fm.aircraft_id = fl.id 
     ORDER BY fm.flight_number
@@ -258,10 +259,30 @@ $extraHead = '
         .plane-highlight { color: #fbbf24 !important; filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.6)) !important; scale: 1.15; z-index: 1000 !important; pointer-events: none !important; }
         .plane-node { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; transition: scale 0.3s ease-out, filter 0.3s; pointer-events: none !important; }
         .plane-svg { width: 100%; height: 100%; fill: currentColor; }
+        .leaflet-tile { transition: opacity 0.4s ease !important; }
+
+        /* Map Filters */
+        .map-filters { position: absolute; top: 130px; right: 20px; z-index: 100; pointer-events: auto; width: 220px; }
+        .filter-btn { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.1); color: #94a3b8; padding: 10px 14px; border-radius: 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.3s; width: 100%; text-align: left; display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+        .filter-btn:hover { background: rgba(99, 102, 241, 0.2); border-color: rgba(99, 102, 241, 0.4); color: white; }
+        .filter-btn.active { background: #6366f1; border-color: #6366f1; color: white; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3); }
+        .filter-btn.active i.fa-toggle-off { display: none; }
+        .filter-btn i.fa-toggle-on { display: none; }
+        .filter-btn.active i.fa-toggle-on { display: inline-block; }
     </style>
 ';
 
-$bgElement = '<div id="routeMap"></div><div class="leaflet-vignette"></div>';
+$bgElement = '
+    <div id="routeMap"></div>
+    <div class="leaflet-vignette"></div>
+    <div class="map-filters flex flex-col gap-2">
+        <button id="toggleRoster" onclick="toggleMapMode(\'roster\')" class="filter-btn active"><span><i class="fas fa-check-circle mr-2"></i> Voos Aceitos</span> <i class="fas fa-toggle-on"></i><i class="fas fa-toggle-off"></i></button>
+        <button id="toggleAll" onclick="toggleMapMode(\'all\')" class="filter-btn"><span><i class="fas fa-globe mr-2"></i> Malha Completa</span> <i class="fas fa-toggle-on"></i><i class="fas fa-toggle-off"></i></button>
+        <div class="glass-panel p-3 rounded-2xl border-white/5 space-y-2">
+            <p class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Filtrar ICAO</p>
+            <input type="text" id="mapIcaoFilter" onkeyup="syncFilters(this, event)" placeholder="Ex: SBGR" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 uppercase">
+        </div>
+    </div>';
 
 include '../includes/layout_header.php';
 ?>
@@ -411,22 +432,25 @@ include '../includes/layout_header.php';
         <div class="p-4 border-b border-white/10 flex justify-between items-center shrink-0 cursor-pointer" onclick="toggleMalha(event)">
             <div class="flex items-center gap-4">
                 <h3 class="text-white font-bold text-sm">Malha Operacional</h3>
-                <div class="bg-white/5 border border-white/10 rounded-full px-3 py-1 text-[10px] text-slate-400 font-bold"><?php echo count($flights); ?> ATIVAS</div>
+                <div id="flight-count-badge" class="bg-white/5 border border-white/10 rounded-full px-3 py-1 text-[10px] text-slate-400 font-bold"><?php echo count($flights); ?> ATIVAS</div>
                 <a href="bulk_assign_aircraft.php" class="bg-indigo-500/20 hover:bg-indigo-500 text-indigo-400 hover:text-white border border-indigo-500/30 px-3 py-1 rounded-full text-[10px] font-bold transition flex items-center gap-1" onclick="event.stopPropagation()">
                     <i class="fas fa-magic"></i> Atribuição em Lote
                 </a>
                 <i id="malha-icon" class="fas fa-chevron-up text-xs text-slate-500 transition-transform duration-300"></i>
             </div>
-            <div class="relative w-64"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i><input type="text" id="flightSearch" placeholder="Busca rápida..." class="w-full bg-white/5 border border-white/10 rounded-full pl-9 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"></div>
+            <div class="relative w-64"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i><input type="text" id="flightSearch" onkeyup="syncFilters(this, event)" placeholder="Busca rápida..." class="w-full bg-white/5 border border-white/10 rounded-full pl-9 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"></div>
         </div>
         <div class="flex-1 overflow-y-auto">
-            <table class="w-full text-left text-[11px] text-slate-300">
+            <table id="malha-table" class="w-full text-left text-[11px] text-slate-300">
                 <thead class="bg-white/2 sticky top-0 z-20 text-[9px] uppercase tracking-widest font-bold text-slate-500 bg-[#0c0e17]">
                     <tr><th class="px-6 py-3">Número</th><th class="px-6 py-3 text-center">Trecho</th><th class="px-6 py-3">Rota</th><th class="px-6 py-3">UTC Window</th><th class="px-6 py-3">Dados (Pax/Fuel)</th><th class="px-6 py-3">Equipamento</th><th class="px-6 py-3">EET</th><th class="px-6 py-3 text-right pr-8">Ação</th></tr>
                 </thead>
                 <tbody class="divide-y divide-white/5">
                     <?php foreach ($flights as $f): ?>
-                            <tr class="hover:bg-white/5 transition group cursor-pointer border-l-2 border-transparent" onclick="selectFlight(this, '<?php echo $f['flight_number']; ?>')" ondblclick="focusFlight(this, '<?php echo $f['flight_number']; ?>')">
+                            <tr class="hover:bg-white/5 transition group cursor-pointer border-l-2 border-transparent" 
+                                data-status="<?php echo $f['roster_status']; ?>"
+                                onclick="selectFlight(this, '<?php echo $f['flight_number']; ?>')" 
+                                ondblclick="focusFlight(this, '<?php echo $f['flight_number']; ?>')">
                                 <td class="px-6 py-3 font-bold text-indigo-400"><?php echo $f['flight_number']; ?></td>
                                 <td class="px-6 py-3 text-center"><div class="flex items-center justify-center gap-2"><span><?php echo $f['dep_icao']; ?></span><i class="fas fa-arrow-right text-[10px] text-slate-600"></i><span><?php echo $f['arr_icao']; ?></span></div></td>
                                 <td class="px-6 py-3 font-mono text-[9px] text-slate-400 max-w-[150px] truncate" title="<?php echo htmlspecialchars($f['route']); ?>"><?php echo htmlspecialchars($f['route'] ?: '--'); ?></td>
@@ -461,6 +485,9 @@ include '../includes/layout_header.php';
     var api_dir = '../SimBrief_APIv1/';
     let debounceTimer, map, mapObjects = {}, currentBounds = null;
     let isAnimating = false;
+    let airportCoordinates = {}; // Lookup for airport positions
+    let allRouteData = []; // Raw data from API
+    let mapMode = 'roster'; // 'roster' (Accepted) or 'all'
     const routeLayerGroup = L.layerGroup();
     const resetTimers = {}; // Store timers for debounce
 
@@ -566,9 +593,22 @@ include '../includes/layout_header.php';
     }
 
     function initMap() {
-        map = L.map('routeMap', { zoomControl: false }).setView([-15.78, -47.92], 4);
+        map = L.map('routeMap', { 
+            zoomControl: false,
+            preferCanvas: true // Use Canvas for rendering vector layers (huge performance boost)
+        }).setView([-15.78, -47.92], 4);
         map.on('zoomend', updateMarkerSize);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; CARTO' }).addTo(map);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { 
+            attribution: '&copy; CARTO',
+            subdomains: 'abcd',
+            detectRetina: true,
+            maxZoom: 20,
+            minZoom: 3,
+            keepBuffer: 8, // Pre-load a much larger area to prevent gaps during high-speed panning
+            updateWhenIdle: false, // Transition back to live updates for a more responsive feel
+            updateInterval: 100,
+            className: 'map-tiles'
+        }).addTo(map);
         
         map.createPane('hubs');
         map.getPane('hubs').style.zIndex = 700;
@@ -590,9 +630,81 @@ include '../includes/layout_header.php';
 
     async function loadMapRoutes() {
         const r = await fetch('../api/get_route_map.php');
-        const routes = await r.json();
+        allRouteData = await r.json();
+        refreshMapLayers();
+    }
+
+    function toggleMapMode(mode) {
+        mapMode = mode;
+        document.getElementById('toggleRoster').classList.toggle('active', mode === 'roster');
+        document.getElementById('toggleAll').classList.toggle('active', mode === 'all');
+        refreshMapLayers();
+        updateMapFilters();
+    }
+
+    function syncFilters(source, event) {
+        const val = source.value;
+        const targetId = source.id === 'flightSearch' ? 'mapIcaoFilter' : 'flightSearch';
+        const target = document.getElementById(targetId);
+        if (target) target.value = val;
         
-        // Clean up existing objects to prevent ghost animations
+        // If ENTER is pressed, switch to 'All Routes' mode automatically to show full network
+        if (event && event.key === 'Enter' && val.trim() !== '') {
+            toggleMapMode('all');
+        } else {
+            updateMapFilters();
+        }
+    }
+
+    function updateMapFilters() {
+        const filterIcao = document.getElementById('mapIcaoFilter').value.trim().toUpperCase();
+        
+        // 1. Filter Sidebar List (Sync with Map)
+        let visibleCount = 0;
+        const rows = document.querySelectorAll('#malha-table tbody tr');
+        rows.forEach(row => {
+            const status = row.getAttribute('data-status');
+            const fnum = row.cells[0]?.textContent.toUpperCase() || "";
+            const trecho = row.cells[1]?.textContent.toUpperCase() || "";
+            
+            let show = true;
+
+            // Apply Mode Filter (Roster vs All)
+            if (mapMode === 'roster' && status !== 'Accepted') {
+                show = false;
+            }
+
+            // Apply ICAO/Search Filter
+            if (show && filterIcao) {
+                if (!fnum.includes(filterIcao) && !trecho.includes(filterIcao)) {
+                    show = false;
+                }
+            }
+
+            if (show) {
+                row.style.display = '';
+                visibleCount++;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+
+        // Update Dynamic Badge
+        const badge = document.getElementById('flight-count-badge');
+        if (badge) badge.textContent = `${visibleCount} ATIVAS`;
+
+        // 2. Debounce Map Refresh (Heavier)
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            refreshMapLayers();
+        }, 300);
+    }
+
+    function refreshMapLayers() {
+        if (!allRouteData || !Array.isArray(allRouteData)) return;
+        const filterIcao = document.getElementById('mapIcaoFilter').value.trim().toUpperCase();
+        
+        // Clean up existing objects
         for (const fnum in mapObjects) {
             if (mapObjects[fnum].plane) mapObjects[fnum].plane.remove();
             if (mapObjects[fnum].line) mapObjects[fnum].line.remove();
@@ -602,52 +714,74 @@ include '../includes/layout_header.php';
         
         routeLayerGroup.clearLayers();
         mapObjects = {};
-        airportMarkers = []; // Reset global array
+        airportMarkers = []; 
         const airportData = {}; 
         const b = [];
         
+        // Filter routes
+        const filteredRoutes = allRouteData.filter(x => {
+            // Mode filter
+            if (mapMode === 'roster' && x.roster_status !== 'Accepted') return false;
+            
+            // ICAO filter (Partial Match)
+            if (filterIcao) {
+                const dep = (x.dep_icao || "").toUpperCase();
+                const arr = (x.arr_icao || "").toUpperCase();
+                if (!dep.includes(filterIcao) && !arr.includes(filterIcao)) return false;
+            }
+            
+            return true;
+        });
+
         // 1. Map Coordinates and Group Departing Flights
-        routes.forEach(x => {
+        filteredRoutes.forEach(x => {
             if (x.dep_lat && x.arr_lat) {
-                // Fix: Parse coordinates as floats to prevent string concatenation during animation math
                 const p1 = [parseFloat(x.dep_lat), parseFloat(x.dep_lon)]; 
                 const p2 = [parseFloat(x.arr_lat), parseFloat(x.arr_lon)];
+                
+                airportCoordinates[x.dep_icao] = p1;
+                airportCoordinates[x.arr_icao] = p2;
+                
                 b.push(p1, p2);
                 
-                if (!airportData[x.dep_icao]) airportData[x.dep_icao] = { pos: p1, departing: [] };
-                if (!airportData[x.arr_icao]) airportData[x.arr_icao] = { pos: p2, departing: [] };
+                if (!airportData[x.dep_icao]) airportData[x.dep_icao] = { pos: p1, departing: [], hasAccepted: false };
+                if (!airportData[x.arr_icao]) airportData[x.arr_icao] = { pos: p2, departing: [], hasAccepted: false };
+                
+                if (x.roster_status === 'Accepted') {
+                    airportData[x.dep_icao].hasAccepted = true;
+                    airportData[x.arr_icao].hasAccepted = true;
+                }
                 
                 airportData[x.dep_icao].departing.push(x.flight_number);
             }
         });
 
-        // 2. Clear then Draw Lines 
-        routes.forEach(x => {
+        // 2. Draw Lines 
+        filteredRoutes.forEach(x => {
             if (x.dep_lat && x.arr_lat) {
                 const p1 = [parseFloat(x.dep_lat), parseFloat(x.dep_lon)];
                 const p2 = [parseFloat(x.arr_lat), parseFloat(x.arr_lon)];
                 
-                let detailedPath = null;
                 const directPath = [p1, p2];
-
+                let detailedPath = null;
                 if (x.route_waypoints) {
                     try {
                         const wps = JSON.parse(x.route_waypoints);
                         if (Array.isArray(wps) && wps.length > 0) detailedPath = wps;
-                    } catch(e) { console.error('Error parsing waypoints', e); }
+                    } catch(e) {}
                 }
 
-                const line = L.polyline(detailedPath || directPath, { 
-                    color: '#94a3b8', 
-                    weight: 1, 
-                    opacity: 0.15, 
-                    dashArray: '3,3', 
+                const isAccepted = x.roster_status === 'Accepted';
+                
+                const line = L.polyline(directPath, { 
+                    color: isAccepted ? '#06b6d4' : '#94a3b8', 
+                    weight: isAccepted ? 2 : 1, 
+                    opacity: isAccepted ? 0.6 : 0.15, 
+                    dashArray: isAccepted ? null : '3,3', 
                     interactive: false,
                     pane: 'lines' 
                 }).addTo(routeLayerGroup);
 
-                // Calculate rotation for plane icon (Bearing)
-                // SVG points UP (North) by default, so we match the Azimuth angle directly (0 = North)
                 const dy = p2[0] - p1[0];
                 const dx = p2[1] - p1[1];
                 let angle = (Math.atan2(dx, dy) * 180 / Math.PI); 
@@ -669,8 +803,12 @@ include '../includes/layout_header.php';
                     plane,
                     p1, p2,
                     progress: 0, 
-                    speed: 0.002, // Slower speed for detailed routes
-                    active: false
+                    speed: 0.002, 
+                    active: false,
+                    dep_icao: x.dep_icao,
+                    arr_icao: x.arr_icao,
+                    dep_time: x.dep_time ? x.dep_time.substring(0, 5) : '',
+                    arr_time: x.arr_time ? x.arr_time.substring(0, 5) : ''
                 };
             }
         });
@@ -678,21 +816,14 @@ include '../includes/layout_header.php';
         // 3. Draw Markers (Hubs) on top
         for (const icao in airportData) {
             const data = airportData[icao];
+            const markerColor = data.hasAccepted ? '#06b6d4' : '#818cf8';
             const marker = L.circleMarker(data.pos, { 
-                radius: 6, 
-                color: '#818cf8', 
-                weight: 2, 
-                fillColor: '#1e1b4b', 
-                fillOpacity: 1, 
-                interactive: true,
-                pane: 'hubs',
-                className: 'airport-node'
+                radius: 6, color: markerColor, weight: 2, fillColor: '#1e1b4b', fillOpacity: 1, interactive: true, pane: 'hubs', className: 'airport-node'
             }).addTo(routeLayerGroup);
 
             marker.bindTooltip(icao, { permanent: false, direction: 'top', className: 'glass-tooltip', offset: [0, -10] });
             
             marker.on('mouseover', function(e) {
-                console.log('Hover Airport:', icao, 'Flights:', data.departing);
                 L.DomEvent.stopPropagation(e);
                 this.setStyle({ color: '#fbbf24', radius: 7, weight: 2 });
                 data.departing.forEach(fn => highlightRoute(fn, false)); 
@@ -704,24 +835,24 @@ include '../includes/layout_header.php';
                 data.departing.forEach(fn => resetRoute(fn, false));
             });
 
-            // Store for dynamic resizing
             airportMarkers.push(marker);
 
-            // Map markers back to flights for individual row highlights
-            routes.forEach(x => {
+            filteredRoutes.forEach(x => {
                 if (x.dep_icao === icao || x.arr_icao === icao) {
                     if (mapObjects[x.flight_number]) mapObjects[x.flight_number].markers.push(marker);
                 }
             });
         }
         
-        // Initial size set
         updateMarkerSize();
 
         if (b.length > 0) {
             currentBounds = L.latLngBounds(b);
             fitMapToRoutes();
         }
+
+        checkAvailability();
+        updateMapFilters();
     }
     
     let airportMarkers = [];
@@ -788,8 +919,27 @@ include '../includes/layout_header.php';
         row.classList.remove('border-transparent');
         row.classList.add('bg-white/10', 'border-indigo-500');
         
-        // Highlight with Direct Path (White)
-        highlightRoute(fnum, true, '#ffffff', false);
+        // Highlight with Detailed Path (White)
+        highlightRoute(fnum, true, '#ffffff', true);
+
+        // Auto-Zoom to Route
+        const obj = mapObjects[fnum];
+        if (obj) {
+            const path = obj.detailedPath || obj.directPath;
+            const bounds = L.latLngBounds(path);
+            bounds.extend(obj.p1);
+            bounds.extend(obj.p2);
+            
+            const shelf = document.getElementById('malha-shelf');
+            const isMinimized = shelf.classList.contains('minimized');
+            
+            map.flyToBounds(bounds, {
+                paddingTopLeft: [420, 100],
+                paddingBottomRight: [60, isMinimized ? 120 : 320],
+                duration: 1.5,
+                easeLinearity: 0.1
+            });
+        }
     }
 
     function focusFlight(row, fnum) {
@@ -867,6 +1017,33 @@ include '../includes/layout_header.php';
                 obj.markers.forEach(m => m.setStyle({ color: color, radius: 6, weight: 2 }));
             }
 
+            if (useDetailed) {
+                if (!obj.endpointMarkers) {
+                    const iconStyle = "color: white; font-size: 11px; font-weight: 800; white-space: nowrap; text-shadow: 0 0 4px #000, 0 0 8px #000; text-align: center; line-height: 1.1;";
+                    
+                    const m1 = L.marker(obj.p1, {
+                        icon: L.divIcon({ 
+                            className: '', 
+                            html: `<div style="${iconStyle}">${obj.dep_icao}<br><span style="color:#94a3b8; font-size:9px; font-weight:600;">${obj.dep_time}Z</span></div>`, 
+                            iconSize: [60, 30], 
+                            iconAnchor: [30, -10] 
+                        }),
+                        interactive: false
+                    });
+                    const m2 = L.marker(obj.p2, {
+                        icon: L.divIcon({ 
+                            className: '', 
+                            html: `<div style="${iconStyle}">${obj.arr_icao}<br><span style="color:#94a3b8; font-size:9px; font-weight:600;">${obj.arr_time}Z</span></div>`, 
+                            iconSize: [60, 30], 
+                            iconAnchor: [30, -10] 
+                        }),
+                        interactive: false
+                    });
+                    obj.endpointMarkers = [m1, m2];
+                }
+                obj.endpointMarkers.forEach(m => m.addTo(map));
+            }
+
             // Waypoints Labels Logic
             if (useDetailed && obj.detailedPath && obj.detailedPath.length > 0 && obj.detailedPath[0].name) {
                  if (!obj.waypointMarkers) {
@@ -909,14 +1086,17 @@ include '../includes/layout_header.php';
         resetTimers[fnum] = setTimeout(() => {
             const obj = mapObjects[fnum];
             
-            // Clear waypoints if any
+            // Clear waypoints and endpoint markers
             if (obj && obj.waypointMarkers) {
                 obj.waypointMarkers.forEach(m => m.remove());
             }
+            if (obj && obj.endpointMarkers) {
+                obj.endpointMarkers.forEach(m => m.remove());
+            }
 
             if (obj && obj.plane) {
-                // Reset to detailed path for default view
-                obj.line.setLatLngs(obj.detailedPath);
+                // Optimization: Reset to direct path for background malha
+                obj.line.setLatLngs(obj.directPath);
                 obj.line.setStyle({ color: '#94a3b8', weight: 1, opacity: 0.15, dashArray: '3,3' });
                 
                 // Deactivate Plane Animation
@@ -1135,6 +1315,19 @@ include '../includes/layout_header.php';
             fetch(`../api/get_ac_status.php?id=${acId}`).then(r => r.json()).then(data => {
                 statusEl.classList.remove('hidden'); statusEl.innerHTML = `<span class="text-indigo-400 font-bold uppercase tracking-tighter">Posição: ${data.current_location}</span>`;
                 
+                // Auto-Zoom to current location or planned route
+                const dep = document.getElementById('dep').value.trim().toUpperCase();
+                const arr = document.getElementById('arr').value.trim().toUpperCase();
+                
+                if (dep && arr && airportCoordinates[dep] && airportCoordinates[arr]) {
+                    // Zoom to fit the planned route
+                    const bounds = L.latLngBounds([airportCoordinates[dep], airportCoordinates[arr]]);
+                    map.flyToBounds(bounds, { padding: [100, 100], duration: 1.5 });
+                } else if (airportCoordinates[data.current_location]) {
+                    // Zoom to current aircraft location
+                    map.flyTo(airportCoordinates[data.current_location], 7, { duration: 1.5 });
+                }
+
                 // Only show schedule if it's a manual change OR if dep_time is empty
                 const depTimeFilled = document.getElementById('dep_time').value !== "";
                 if (isAcChange || !depTimeFilled) {
@@ -1179,10 +1372,6 @@ include '../includes/layout_header.php';
         }, 500);
     }
 
-    document.getElementById('flightSearch').addEventListener('keyup', function() {
-        const q = this.value.toLowerCase();
-        document.querySelectorAll('tbody tr').forEach(tr => tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none');
-    });
 
     document.addEventListener('DOMContentLoaded', () => { 
         initMap(); 
