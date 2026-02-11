@@ -3,8 +3,33 @@
 require_once __DIR__ . '/auth_session.php';
 $sysSettings = getSystemSettings($pdo);
 $role = $_SESSION['role'] ?? 'pilot';
-$is_admin = ($role === 'admin');
 $current_page = basename($_SERVER['PHP_SELF']);
+$current_dir = basename(dirname($_SERVER['PHP_SELF']));
+
+// Fetch actual admin status from DB to be safe
+$db_admin = false;
+if (isset($pdo) && isset($_SESSION['user_id'])) {
+    $stmt = $pdo->prepare("SELECT is_admin FROM pilots WHERE user_id = ?");
+    $stmt->execute([$_SESSION['user_id']]);
+    $db_admin = (bool)$stmt->fetchColumn();
+}
+
+// A user is considered in "Admin Mode" if they have the role OR the flag, 
+// AND they are currently accessing a page in the admin directory.
+$is_admin_privileged = ($role === 'admin' || $db_admin);
+$is_admin = ($is_admin_privileged && $current_dir === 'admin');
+
+// For the dynamic button, we still need to know if they COULD be admin
+$is_actually_admin = $is_admin_privileged;
+
+// Fetch Pilot Info for the top bar (Available on all pages)
+$pilot = ['name' => 'Usuário', 'profile_image' => ''];
+if (isset($pdo) && isset($_SESSION['user_id'])) {
+    $stmt = $pdo->prepare("SELECT name, profile_image FROM pilots WHERE user_id = ?");
+    $stmt->execute([$_SESSION['user_id']]);
+    $pData = $stmt->fetch();
+    if ($pData) $pilot = $pData;
+}
 
 $showParamsAlert = false;
 if (!$is_admin && isset($pdo)) {
@@ -18,6 +43,7 @@ if (!$is_admin && isset($pdo)) {
         $showParamsAlert = (!$checkRes || !$checkRes['has_sched'] || !$checkRes['has_ac']);
     }
 }
+
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -93,6 +119,13 @@ if (!$is_admin && isset($pdo)) {
                             <i class="fas fa-cog"></i>
                             <span class="nav-label">Config</span>
                         </a>
+
+                        <div class="h-8 w-px bg-white/5 mx-2"></div>
+
+                        <a href="../pilot/dashboard.php" class="nav-button" title="Portal do Piloto">
+                            <i class="fas fa-user"></i>
+                            <span class="nav-label">Portal</span>
+                        </a>
                     <?php else: ?>
                         <a href="dashboard.php" class="nav-button <?php echo $current_page == 'dashboard.php' ? 'active' : ''; ?>" title="Painel">
                             <i class="fas fa-home"></i>
@@ -123,6 +156,14 @@ if (!$is_admin && isset($pdo)) {
                             </div>
                             <span class="nav-label">Prefs</span>
                         </a>
+
+                        <?php if ($is_actually_admin): ?>
+                            <div class="h-8 w-px bg-white/5 mx-2"></div>
+                            <a href="../admin/dashboard.php" class="nav-button" title="Área Administrativa">
+                                <i class="fas fa-shield-alt"></i>
+                                <span class="nav-label">Admin</span>
+                            </a>
+                        <?php endif; ?>
                     <?php endif; ?>
                 </nav>
             </div>
