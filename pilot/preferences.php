@@ -7,11 +7,22 @@ $pilotId = getCurrentPilotId($pdo);
 $daysMap = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 $dbDays = [0, 1, 2, 3, 4, 5, 6];
 
+// Fetch Pilot Table Data (specifically for timezone)
+$stmt = $pdo->prepare("SELECT timezone FROM pilots WHERE id = ?");
+$stmt->execute([$pilotId]);
+$timezone = $stmt->fetchColumn() ?: 'UTC';
+
 // Handle Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $pdo->beginTransaction();
     try {
-        // 1. Update Schedule Preferences
+        // 1. Update Pilot Timezone
+        $newTimezone = $_POST['timezone'] ?? 'UTC';
+        $stmt = $pdo->prepare("UPDATE pilots SET timezone = ? WHERE id = ?");
+        $stmt->execute([$newTimezone, $pilotId]);
+        $timezone = $newTimezone; // Use new timezone for subsequent conversions
+
+        // 2. Update Schedule Preferences
         $stmt = $pdo->prepare("DELETE FROM pilot_preferences WHERE pilot_id = ?");
         $stmt->execute([$pilotId]);
 
@@ -20,18 +31,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($_POST['pref']) && is_array($_POST['pref'])) {
             foreach ($_POST['pref'] as $day => $data) {
                 if (isset($data['active'])) {
+                    // Convert Local Input to UTC for Storage
+                    $dateToday = date('Y-m-d');
+                    $localStart = new DateTime($dateToday . ' ' . $data['start'], new DateTimeZone($timezone));
+                    $localEnd = new DateTime($dateToday . ' ' . $data['end'], new DateTimeZone($timezone));
+                    
+                    $localStart->setTimezone(new DateTimeZone('UTC'));
+                    $localEnd->setTimezone(new DateTimeZone('UTC'));
+
                     $stmt->execute([
                         $pilotId,
                         $day,
-                        $data['start'],
-                        $data['end'],
+                        $localStart->format('H:i:s'),
+                        $localEnd->format('H:i:s'),
                         $data['max']
                     ]);
                 }
             }
         }
 
-        // 2. Update Aircraft Preferences
+        // 3. Update Aircraft Preferences
         $stmt = $pdo->prepare("DELETE FROM pilot_aircraft_prefs WHERE pilot_id = ?");
         $stmt->execute([$pilotId]);
 
@@ -46,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['flash_msg'] = ["type" => "success", "text" => "Preferências atualizadas com sucesso."];
         header("Location: dashboard.php");
         exit;
-    } catch (PDOException $e) {
+    } catch (Exception $e) {
         $pdo->rollBack();
         die("Erro ao salvar: " . $e->getMessage());
     }
@@ -57,6 +76,17 @@ $stmt = $pdo->prepare("SELECT * FROM pilot_preferences WHERE pilot_id = ?");
 $stmt->execute([$pilotId]);
 $currentData = [];
 foreach ($stmt->fetchAll() as $row) {
+    // Convert UTC from DB to Local for Display
+    $dateToday = date('Y-m-d');
+    $utcStart = new DateTime($dateToday . ' ' . $row['start_time'], new DateTimeZone('UTC'));
+    $utcEnd = new DateTime($dateToday . ' ' . $row['end_time'], new DateTimeZone('UTC'));
+    
+    $utcStart->setTimezone(new DateTimeZone($timezone));
+    $utcEnd->setTimezone(new DateTimeZone($timezone));
+    
+    $row['start_time'] = $utcStart->format('H:i');
+    $row['end_time'] = $utcEnd->format('H:i');
+    
     $currentData[$row['day_of_week']] = $row;
 }
 
@@ -90,10 +120,34 @@ include '../includes/layout_header.php';
 
     <form method="POST" class="flex-1 flex flex-col space-y-6 overflow-hidden">
         <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-6">
+            <!-- Timezone Section -->
+            <div class="glass-panel p-8 rounded-3xl space-y-4">
+                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <i class="fas fa-globe text-indigo-400"></i> Fuso Horário Local
+                </h3>
+                <div class="space-y-1">
+                    <label class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Selecione seu Fuso Horário</label>
+                    <select name="timezone" class="form-input !bg-white/5 border-white/5">
+                        <?php
+                        $tzlist = DateTimeZone::listIdentifiers(DateTimeZone::ALL);
+                        $now = new DateTime('now', new DateTimeZone('UTC'));
+                        foreach ($tzlist as $tz) {
+                            $selected = ($tz === $timezone) ? 'selected' : '';
+                            $tzNow = clone $now;
+                            $tzNow->setTimezone(new DateTimeZone($tz));
+                            $timeStr = $tzNow->format('H:i');
+                            echo "<option value=\"$tz\" $selected>$tz ($timeStr)</option>";
+                        }
+                        ?>
+                    </select>
+                    <p class="text-[9px] text-slate-500 mt-2 italic">* Os parâmetros operacionais abaixo devem ser preenchidos de acordo com seu horário local selecionado acima.</p>
+                </div>
+            </div>
+
             <!-- Schedule Section -->
             <div id="schedule-section" class="glass-panel p-8 rounded-3xl space-y-4 relative">
                 <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <i class="fas fa-calendar-alt text-indigo-400"></i> Janelas de Voo (UTC)
+                    <i class="fas fa-calendar-alt text-indigo-400"></i> Janelas de Voo (Horário Local)
                 </h3>
                 <div class="grid grid-cols-1 gap-3">
                     <?php foreach ($dbDays as $idx): 

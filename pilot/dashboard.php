@@ -174,7 +174,8 @@ include '../includes/layout_header.php';
                     </div>
                 <?php else: ?>
                     <?php foreach ($roster as $flight): ?>
-                        <?php
+                        <?php 
+                        $isToday = $flight['flight_date'] == date('Y-m-d');
                         $statusColor = 'amber';
                         $statusIcon = 'clock';
                         $statusText = 'SUGESTÃO';
@@ -183,11 +184,28 @@ include '../includes/layout_header.php';
                         elseif ($flight['status'] == 'Flown') { $statusColor = 'blue'; $statusIcon = 'plane-arrival'; $statusText = 'CONCLUÍDO'; }
                         elseif ($flight['status'] == 'Rejected') { $statusColor = 'rose'; $statusIcon = 'times-circle'; $statusText = 'RECUSADO'; }
                         ?>
-                        <div class="glass-panel rounded-3xl overflow-hidden border-l-4 border-<?php echo $statusColor; ?>-500 group transition hover:bg-white/5">
+                        <div class="glass-panel rounded-3xl overflow-hidden border-l-4 border-<?php echo $statusColor; ?>-500 group transition hover:bg-white/5 <?php echo $isToday ? 'ring-2 ring-indigo-500/50 bg-indigo-500/5' : ''; ?>">
                             <div class="bg-white/5 px-6 py-2 flex justify-between items-center border-b border-white/5">
-                                <span class="text-[9px] font-bold text-slate-400 tracking-widest uppercase">
-                                    <?php echo date('D, d \d\e M', strtotime($flight['flight_date'])); ?>
-                                </span>
+                                <div class="flex items-center gap-3">
+                                    <span class="text-[9px] font-bold text-slate-400 tracking-widest uppercase">
+                                        <?php 
+                                        $pilotTz = new DateTimeZone($pilot['timezone'] ?: 'UTC');
+                                        $depUtc = new DateTime($flight['flight_date'] . ' ' . $flight['dep_time'], new DateTimeZone('UTC'));
+                                        $depLocal = clone $depUtc;
+                                        $depLocal->setTimezone($pilotTz);
+
+                                        $days = [
+                                            'Sun' => 'Domingo', 'Mon' => 'Segunda-feira', 'Tue' => 'Terça-feira', 
+                                            'Wed' => 'Quarta-feira', 'Thu' => 'Quinta-feira', 'Fri' => 'Sexta-feira', 'Sat' => 'Sábado'
+                                        ];
+                                        $dayName = $days[$depLocal->format('D')];
+                                        echo $dayName . ' ' . $depLocal->format('d/m/Y') . ' ' . $depLocal->format('H:i') . ' LCL'; 
+                                        ?>
+                                    </span>
+                                    <?php if ($flight['flight_date'] == date('Y-m-d', strtotime('now'))): ?>
+                                        <span class="bg-indigo-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full animate-pulse">HOJE</span>
+                                    <?php endif; ?>
+                                </div>
                                 <span class="text-[9px] font-bold text-<?php echo $statusColor; ?>-400 tracking-widest uppercase flex items-center gap-1">
                                     <i class="fas fa-<?php echo $statusIcon; ?> text-[8px]"></i> <?php echo $statusText; ?>
                                 </span>
@@ -207,7 +225,11 @@ include '../includes/layout_header.php';
                                 <div class="flex-1 flex items-center justify-center gap-4">
                                     <div class="text-center">
                                         <p class="text-xl font-bold text-white"><?php echo $flight['dep_icao']; ?></p>
-                                        <span class="text-[10px] text-slate-500 font-mono"><?php echo substr($flight['dep_time'], 0, 5); ?>Z</span>
+                                        <span class="text-[10px] text-slate-500 font-mono">
+                                            <?php 
+                                            echo substr($flight['dep_time'], 0, 5) . 'Z';
+                                            ?>
+                                        </span>
                                     </div>
                                     <div class="flex-1 max-w-[120px] flex flex-col items-center gap-1 px-2 relative">
                                         <div class="w-full h-px bg-white/10 relative border-b border-dashed border-white/20">
@@ -221,7 +243,12 @@ include '../includes/layout_header.php';
                                     </div>
                                     <div class="text-center">
                                         <p class="text-xl font-bold text-white"><?php echo $flight['arr_icao']; ?></p>
-                                        <span class="text-[10px] text-slate-500 font-mono"><?php echo substr($flight['arr_time'], 0, 5); ?>Z</span>
+                                        <span class="text-[10px] text-slate-500 font-mono">
+                                            <?php 
+                                            // Handle Arrival Local Time for accuracy (though card header usually enough)
+                                            echo substr($flight['arr_time'], 0, 5) . 'Z';
+                                            ?>
+                                        </span>
                                     </div>
                                 </div>
 

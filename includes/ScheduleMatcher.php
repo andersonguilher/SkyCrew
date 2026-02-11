@@ -39,10 +39,9 @@ class ScheduleMatcher
         $stmt->execute([$pilotId]);
         $aircraftPrefs = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
-        // 3. Clear existing suggested rosters for this period (to allow regeneration)
-        // Note: In a real system, we might keep them or version them.
-        $stmt = $this->pdo->prepare("DELETE FROM roster_assignments WHERE pilot_id = ? AND flight_date BETWEEN ? AND ? AND status = 'Suggested'");
-        $stmt->execute([$pilotId, $startDateStr, $endDateStr]);
+        // 3. Clear existing suggested and rejected rosters for this pilot (to allow regeneration of a clean weekly schedule)
+        $stmt = $this->pdo->prepare("DELETE FROM roster_assignments WHERE pilot_id = ? AND status IN ('Suggested', 'Rejected')");
+        $stmt->execute([$pilotId]);
 
         // 4. Algorithm State
         $currentLocation = $pilot['current_base'];
@@ -69,68 +68,76 @@ class ScheduleMatcher
                 // Pilot availability window
                 $prefStart = new DateTime($dateStr . ' ' . $pref['start_time']);
                 $prefEnd = new DateTime($dateStr . ' ' . $pref['end_time']);
+                
+                $dailyHours = 0;
+                $lastFlightId = null;
 
-                // Adjust if end time is next day (e.g. 22:00 to 02:00) - Assuming simpler "same day" windows for MVP unless specified 
-                // The prompt says windows, usually implies intraday.
+                // Inner loop to find multiple legs in the same day
+                while (true) {
+                    $potentialFlights = $this->getFlightsFrom($currentLocation);
+                    $legAdded = false;
 
-                // Find a flight that matches:
-                // 1. Departs from $currentLocation
-                // 2. Departs AFTER $prefStart
-                // 3. Arrives BEFORE $prefEnd (or fits within max duty roughly)
-                // 4. Departs AFTER ($lastArrivalTime + 10 hours)
+                    foreach ($potentialFlights as $flight) {
+                        // CONSTRAINT 0: No sequential repetition of the same flight
+                        if ($flight['id'] == $lastFlightId) continue;
 
-                $potentialFlights = $this->getFlightsFrom($currentLocation);
+                        $flightDep = new DateTime($dateStr . ' ' . $flight['dep_time']);
+                        $flightArr = new DateTime($dateStr . ' ' . $flight['arr_time']);
+                        
+                        // Handle flights that cross midnight for arrival
+                        if ($flightArr < $flightDep) {
+                            $flightArr->modify('+1 day');
+                        }
 
-                foreach ($potentialFlights as $flight) {
-                    $flightDep = new DateTime($dateStr . ' ' . $flight['dep_time']);
+                        // CONSTRAINT 1: Availability Window
+                        if ($flightDep < $prefStart) continue;
+                        if ($flightArr > $prefEnd) continue;
 
-                    // Handle flights that cross midnight for arrival
-                    $flightArr = new DateTime($dateStr . ' ' . $flight['arr_time']);
-                    if ($flightArr < $flightDep) {
-                        $flightArr->modify('+1 day');
-                    }
+                        // CONSTRAINT 2: Max Daily Hours
+                        $flightDurationHours = $flight['duration_minutes'] / 60;
+                        if (($dailyHours + $flightDurationHours) > $pref['max_daily_hours']) continue;
 
-                    // CONSTRAINT 1: Availability Window
-                    if ($flightDep < $prefStart)
-                        continue;
-                    // Simple check: Flight must start within window. 
-                    // Harder check: Flight must FINISH within window? Let's assume start is key, 
-                    // but check max duty.
+                        // CONSTRAINT 3: Rest Period
+                        if ($lastArrivalTime) {
+                            // If same day arrival, use 45 min turnaround. If different day, use 10h rest.
+                            $isSameDay = $lastArrivalTime->format('Y-m-d') == $dateStr;
+                            $minRestMinutes = $isSameDay ? 45 : 600; 
+                            
+                            $minDepTime = clone $lastArrivalTime;
+                            $minDepTime->modify("+$minRestMinutes minutes");
+                            
+                            if ($flightDep < $minDepTime) continue;
+                        }
 
-                    // CONSTRAINT 2: Max Daily Hours
-                    $flightDurationHours = $flight['duration_minutes'] / 60;
-                    if ($flightDurationHours > $pref['max_daily_hours'])
-                        continue;
-
-                    // CONSTRAINT 3: Rest Period (10 hours)
-                    if ($lastArrivalTime) {
-                        $minDepTime = clone $lastArrivalTime;
-                        $minDepTime->modify('+10 hours');
-                        if ($flightDep < $minDepTime)
+                        // CONSTRAINT 4: Aircraft Preference
+                        if (!empty($aircraftPrefs) && !in_array($flight['aircraft_type'], $aircraftPrefs)) {
                             continue;
+                        }
+
+                        // Found a match!
+                        $this->assignFlight($pilotId, $flight['id'], $dateStr);
+
+                        $schedule[] = [
+                            'date' => $dateStr,
+                            'flight' => $flight
+                        ];
+
+                        // Update State
+                        $currentLocation = $flight['arr_icao'];
+                        $lastArrivalTime = $flightArr;
+                        $dailyHours += $flightDurationHours;
+                        $lastFlightId = $flight['id'];
+                        $legAdded = true;
+                        
+                        // Successfully added a leg, break the foreach to search for the NEXT leg from the new location
+                        break; 
                     }
 
-                    // CONSTRAINT 4: Aircraft Preference
-                    if (!empty($aircraftPrefs) && !in_array($flight['aircraft_type'], $aircraftPrefs)) {
-                        continue;
-                    }
-
-                    // Found a match!
-                    // Assign Flight
-                    $this->assignFlight($pilotId, $flight['id'], $dateStr);
-
-                    $schedule[] = [
-                        'date' => $dateStr,
-                        'flight' => $flight
-                    ];
-
-                    // Update State
-                    $currentLocation = $flight['arr_icao'];
-                    $lastArrivalTime = $flightArr;
-
-                    // Greedily take one flight per day for this MVP to avoid complex multi-leg/day logic
-                    // If we wanted multi-leg, we would loop here again for same day.
-                    break;
+                    // If no leg was added in this pass, we are done for today
+                    if (!$legAdded) break;
+                    
+                    // Safety: if we hit max daily hours exactly, stop
+                    if ($dailyHours >= $pref['max_daily_hours']) break;
                 }
             }
 
