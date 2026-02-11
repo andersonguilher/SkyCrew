@@ -103,123 +103,158 @@ $pageTitle = "Preferências - SkyCrew OS";
 include '../includes/layout_header.php';
 ?>
 
-<div class="flex-1 flex flex-col space-y-6 overflow-hidden max-w-5xl mx-auto w-full">
-    <div class="flex justify-between items-end shrink-0">
+<div class="flex-1 flex flex-col space-y-6 overflow-hidden max-w-6xl mx-auto w-full">
+    <div class="flex justify-between items-center shrink-0">
         <div>
             <h2 class="text-2xl font-bold text-white flex items-center gap-3">
                 <i class="fas fa-sliders-h text-indigo-400"></i> Parâmetros Operacionais
             </h2>
             <p class="text-[10px] text-slate-500 uppercase tracking-widest mt-1">Configure sua disponibilidade e qualificações</p>
         </div>
-        <div class="flex gap-2">
-            <a href="dashboard.php" class="bg-white/5 border border-white/10 px-4 py-2 rounded-2xl text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:bg-white/10 transition">
-                <i class="fas fa-arrow-left mr-2"></i> Cancelar
+        <div class="flex gap-3">
+            <a href="dashboard.php" class="bg-white/5 border border-white/10 px-6 py-2.5 rounded-2xl text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:bg-white/10 transition flex items-center gap-2">
+                <i class="fas fa-times"></i> Cancelar
             </a>
+            <button type="submit" form="prefs-form" class="btn-glow px-8 py-2.5 text-[10px] uppercase font-black tracking-widest flex items-center gap-2">
+                <i class="fas fa-save shadow-lg"></i> Salvar Alterações
+            </button>
         </div>
     </div>
 
-    <form method="POST" class="flex-1 flex flex-col space-y-6 overflow-hidden">
-        <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-6">
-            <!-- Timezone Section -->
-            <div class="glass-panel p-8 rounded-3xl space-y-4">
-                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <i class="fas fa-globe text-indigo-400"></i> Fuso Horário Local
-                </h3>
-                <div class="space-y-1">
-                    <label class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Selecione seu Fuso Horário</label>
-                    <select name="timezone" class="form-input !bg-white/5 border-white/5">
-                        <?php
-                        $tzlist = DateTimeZone::listIdentifiers(DateTimeZone::ALL);
-                        $now = new DateTime('now', new DateTimeZone('UTC'));
-                        foreach ($tzlist as $tz) {
-                            $selected = ($tz === $timezone) ? 'selected' : '';
-                            $tzNow = clone $now;
-                            $tzNow->setTimezone(new DateTimeZone($tz));
-                            $timeStr = $tzNow->format('H:i');
-                            echo "<option value=\"$tz\" $selected>$tz ($timeStr)</option>";
-                        }
-                        ?>
-                    </select>
-                    <p class="text-[9px] text-slate-500 mt-2 italic">* Os parâmetros operacionais abaixo devem ser preenchidos de acordo com seu horário local selecionado acima.</p>
-                </div>
-            </div>
-
-            <!-- Schedule Section -->
-            <div id="schedule-section" class="glass-panel p-8 rounded-3xl space-y-4 relative">
-                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <i class="fas fa-calendar-alt text-indigo-400"></i> Janelas de Voo (Horário Local)
-                </h3>
-                <div class="grid grid-cols-1 gap-3">
-                    <?php foreach ($dbDays as $idx): 
-                        $dayName = $daysMap[$idx];
-                        $isActive = isset($currentData[$idx]);
-                        $val = $currentData[$idx] ?? ['start_time' => '08:00', 'end_time' => '20:00', 'max_daily_hours' => 8];
-                    ?>
-                    <div class="flex flex-col md:flex-row items-center gap-4 p-4 bg-white/5 rounded-2xl border border-white/5 group hover:bg-white/10 transition">
-                        <div class="w-full md:w-40 flex items-center">
-                            <label class="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" name="pref[<?php echo $idx; ?>][active]" class="sr-only peer" <?php echo $isActive ? 'checked' : ''; ?>>
-                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-500"></div>
-                                <span class="ml-3 text-sm font-bold text-white uppercase tracking-tighter"><?php echo $dayName; ?></span>
-                            </label>
-                        </div>
-                        
-                        <div class="flex-1 flex items-center gap-3">
-                            <input type="time" name="pref[<?php echo $idx; ?>][start]" value="<?php echo substr($val['start_time'], 0, 5); ?>" class="form-input text-center max-w-[120px]">
-                            <span class="text-slate-600 text-[10px] font-bold">ATÉ</span>
-                            <input type="time" name="pref[<?php echo $idx; ?>][end]" value="<?php echo substr($val['end_time'], 0, 5); ?>" class="form-input text-center max-w-[120px]">
-                        </div>
-                        
-                        <div class="flex items-center gap-3">
-                            <span class="text-[9px] text-slate-500 font-bold uppercase">Tempo de Voo:</span>
-                            <div class="flex items-center bg-black/40 rounded-xl border border-white/5 px-3">
-                                <input type="number" name="pref[<?php echo $idx; ?>][max]" value="<?php echo $val['max_daily_hours']; ?>" min="1" max="14" class="bg-transparent text-white text-sm font-bold w-12 py-2 focus:outline-none">
-                                <span class="text-[10px] text-slate-600 font-bold">H</span>
-                            </div>
+    <form id="prefs-form" method="POST" class="flex-1 flex flex-col space-y-6 overflow-hidden">
+        <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 pb-6">
+                <!-- Sidebar: General Config & Aircraft (4 cols) -->
+                <div class="lg:col-span-4 space-y-6">
+                    <!-- Timezone Section -->
+                    <div class="glass-panel p-6 rounded-3xl border border-white/5 space-y-4">
+                        <h3 class="text-[11px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-2">
+                            <i class="fas fa-globe text-indigo-400"></i> Fuso Horário
+                        </h3>
+                        <div class="space-y-3">
+                            <select name="timezone" class="form-input !bg-white/5 border-white/5 focus:!border-indigo-500/50">
+                                <?php
+                                $tzlist = DateTimeZone::listIdentifiers(DateTimeZone::ALL);
+                                $now = new DateTime('now', new DateTimeZone('UTC'));
+                                foreach ($tzlist as $tz) {
+                                    $selected = ($tz === $timezone) ? 'selected' : '';
+                                    if (strpos($tz, '/') !== false) {
+                                        $tzNow = clone $now;
+                                        $tzNow->setTimezone(new DateTimeZone($tz));
+                                        $timeStr = $tzNow->format('H:i');
+                                        echo "<option value=\"$tz\" $selected>$tz ($timeStr)</option>";
+                                    }
+                                }
+                                ?>
+                            </select>
+                            <p class="text-[9px] text-slate-500 italic leading-relaxed">* Os horários das janelas de voo serão ajustados conforme sua localização.</p>
                         </div>
                     </div>
-                    <?php endforeach; ?>
+
+                    <!-- Aircraft Section -->
+                    <div id="aircraft-section" class="glass-panel p-6 rounded-3xl border border-white/5 space-y-4">
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-[11px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                <i class="fas fa-plane text-indigo-400"></i> Qualificações
+                            </h3>
+                            <span class="text-[9px] font-bold text-indigo-400/50 bg-indigo-400/5 px-2 py-0.5 rounded-full uppercase"><?php echo count($availableAircraft); ?> Tipos</span>
+                        </div>
+                        
+                        <?php if (empty($availableAircraft)): ?>
+                            <p class="text-[10px] text-amber-500/60 font-bold uppercase py-4">Nenhuma aeronave disponível.</p>
+                        <?php else: ?>
+                            <div class="grid grid-cols-2 gap-2">
+                                <?php foreach ($availableAircraft as $ac): 
+                                    $checked = in_array($ac, $pilotAircraft) ? 'checked' : '';
+                                ?>
+                                <label class="group relative cursor-pointer">
+                                    <input type="checkbox" name="aircraft[]" value="<?php echo $ac; ?>" class="sr-only peer" <?php echo $checked; ?>>
+                                    <div class="p-3 bg-white/5 border border-white/5 rounded-2xl text-center peer-checked:bg-indigo-600/20 peer-checked:border-indigo-500/40 peer-checked:ring-1 peer-checked:ring-indigo-500/20 transition hover:bg-white/10 group-active:scale-95 duration-200">
+                                        <i class="fas fa-plane-up text-lg mb-1.5 text-slate-600 group-hover:text-indigo-400 peer-checked:text-indigo-400 transition"></i>
+                                        <p class="text-[10px] font-bold text-white uppercase tracking-tighter truncate"><?php echo $ac; ?></p>
+                                    </div>
+                                    <div class="absolute top-1.5 right-1.5 opacity-0 peer-checked:opacity-100 bg-indigo-500 rounded-full w-3.5 h-3.5 flex items-center justify-center text-[7px] text-white shadow-lg shadow-indigo-500/50">
+                                        <i class="fas fa-check"></i>
+                                    </div>
+                                </label>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <!-- Main Content: Schedule (8 cols) -->
+                <div id="schedule-section" class="lg:col-span-8 flex flex-col space-y-4">
+                    <div class="glass-panel p-6 rounded-3xl border border-white/5">
+                        <div class="flex justify-between items-center mb-6">
+                            <h3 class="text-[11px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                <i class="fas fa-calendar-alt text-indigo-400"></i> Janelas de Voo (Horário Local)
+                            </h3>
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-3">
+                            <?php foreach ($dbDays as $idx): 
+                                $dayName = $daysMap[$idx];
+                                $isActive = isset($currentData[$idx]);
+                                $val = $currentData[$idx] ?? ['start_time' => '08:00', 'end_time' => '20:00', 'max_daily_hours' => 8];
+                            ?>
+                            <div class="flex flex-col md:flex-row items-center gap-4 p-4 rounded-2xl border transition duration-300 <?php echo $isActive ? 'bg-indigo-500/5 border-indigo-500/20' : 'bg-white/5 border-white/5 grayscale pointer-events-none opacity-50'; ?> hover:border-indigo-500/40 relative group day-row" data-day="<?php echo $idx; ?>">
+                                <div class="w-full md:w-40 flex items-center shrink-0">
+                                    <label class="relative inline-flex items-center cursor-pointer pointer-events-auto">
+                                        <input type="checkbox" name="pref[<?php echo $idx; ?>][active]" class="sr-only peer day-toggle" <?php echo $isActive ? 'checked' : ''; ?>>
+                                        <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-500"></div>
+                                        <span class="ml-3 text-sm font-bold text-white uppercase tracking-tighter"><?php echo $dayName; ?></span>
+                                    </label>
+                                </div>
+                                
+                                <div class="flex-1 flex items-center gap-3">
+                                    <div class="flex flex-col gap-1 w-full max-w-[120px]">
+                                        <label class="text-[8px] font-black text-slate-500 uppercase ml-1">Início</label>
+                                        <input type="time" name="pref[<?php echo $idx; ?>][start]" value="<?php echo substr($val['start_time'], 0, 5); ?>" class="form-input !py-2 text-center text-xs font-bold">
+                                    </div>
+                                    <div class="pt-4">
+                                        <span class="text-slate-700 text-[10px] font-black">---</span>
+                                    </div>
+                                    <div class="flex flex-col gap-1 w-full max-w-[120px]">
+                                        <label class="text-[8px] font-black text-slate-500 uppercase ml-1">Fim</label>
+                                        <input type="time" name="pref[<?php echo $idx; ?>][end]" value="<?php echo substr($val['end_time'], 0, 5); ?>" class="form-input !py-2 text-center text-xs font-bold">
+                                    </div>
+                                </div>
+                                
+                                <div class="flex flex-col gap-1 md:w-32">
+                                    <label class="text-[8px] font-black text-slate-500 uppercase ml-1 text-center md:text-left">Tempo de Voo</label>
+                                    <div class="flex items-center bg-black/40 rounded-xl border border-white/5 px-3">
+                                        <input type="number" name="pref[<?php echo $idx; ?>][max]" value="<?php echo $val['max_daily_hours']; ?>" min="1" max="14" class="bg-transparent text-white text-sm font-bold w-full py-2 focus:outline-none text-center">
+                                        <span class="text-[10px] text-slate-600 font-bold ml-1">H</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
                 </div>
             </div>
-
-            <!-- Aircraft Section -->
-            <div id="aircraft-section" class="glass-panel p-8 rounded-3xl space-y-4 relative">
-                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <i class="fas fa-plane text-indigo-400"></i> Qualificações de Aeronave
-                </h3>
-                <?php if (empty($availableAircraft)): ?>
-                    <p class="text-xs text-amber-500/60 font-bold uppercase">Nenhuma aeronave disponível no sistema.</p>
-                <?php else: ?>
-                    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                        <?php foreach ($availableAircraft as $ac): 
-                            $checked = in_array($ac, $pilotAircraft) ? 'checked' : '';
-                        ?>
-                        <label class="group relative cursor-pointer">
-                            <input type="checkbox" name="aircraft[]" value="<?php echo $ac; ?>" class="sr-only peer" <?php echo $checked; ?>>
-                            <div class="p-4 bg-white/5 border border-white/5 rounded-2xl text-center peer-checked:bg-indigo-600/20 peer-checked:border-indigo-500/50 transition hover:bg-white/10">
-                                <i class="fas fa-plane-up text-xl mb-2 text-slate-600 group-hover:text-indigo-400 peer-checked:text-indigo-400 transition"></i>
-                                <p class="text-xs font-bold text-white uppercase tracking-tighter"><?php echo $ac; ?></p>
-                            </div>
-                            <div class="absolute top-2 right-2 opacity-0 peer-checked:opacity-100 bg-indigo-500 rounded-full w-4 h-4 flex items-center justify-center text-[8px] text-white">
-                                <i class="fas fa-check"></i>
-                            </div>
-                        </label>
-                        <?php endforeach; ?>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </div>
-
-        <div class="shrink-0 pt-4 flex justify-center">
-            <button type="submit" class="btn-glow px-12 py-4 text-xs uppercase tracking-[0.2em] shadow-[0_0_30px_rgba(99,102,241,0.3)]">
-                Salvar Configurações
-            </button>
         </div>
     </form>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Handle toggle states visually
+    const toggles = document.querySelectorAll('.day-toggle');
+    toggles.forEach(toggle => {
+        toggle.addEventListener('change', function() {
+            const row = this.closest('.day-row');
+            if (this.checked) {
+                row.classList.remove('grayscale', 'pointer-events-none', 'opacity-50', 'bg-white/5', 'border-white/5');
+                row.classList.add('bg-indigo-500/5', 'border-indigo-500/20');
+            } else {
+                row.classList.add('grayscale', 'pointer-events-none', 'opacity-50', 'bg-white/5', 'border-white/5');
+                row.classList.remove('bg-indigo-500/5', 'border-indigo-500/20');
+            }
+        });
+    });
+
     const form = document.querySelector('form');
     
     function showTooltip(elementId, message) {
