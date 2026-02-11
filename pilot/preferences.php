@@ -91,7 +91,7 @@ include '../includes/layout_header.php';
     <form method="POST" class="flex-1 flex flex-col space-y-6 overflow-hidden">
         <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-6">
             <!-- Schedule Section -->
-            <div class="glass-panel p-8 rounded-3xl space-y-4">
+            <div id="schedule-section" class="glass-panel p-8 rounded-3xl space-y-4 relative">
                 <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <i class="fas fa-calendar-alt text-indigo-400"></i> Janelas de Voo (UTC)
                 </h3>
@@ -129,7 +129,7 @@ include '../includes/layout_header.php';
             </div>
 
             <!-- Aircraft Section -->
-            <div class="glass-panel p-8 rounded-3xl space-y-4">
+            <div id="aircraft-section" class="glass-panel p-8 rounded-3xl space-y-4 relative">
                 <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <i class="fas fa-plane text-indigo-400"></i> Qualificações de Aeronave
                 </h3>
@@ -163,5 +163,79 @@ include '../includes/layout_header.php';
         </div>
     </form>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('form');
+    
+    function showTooltip(elementId, message) {
+        const target = document.getElementById(elementId);
+        const scrollContainer = target.closest('.overflow-y-auto');
+        
+        // Remove existing tooltips and highlights
+        document.querySelectorAll('.validation-tooltip').forEach(el => el.remove());
+        document.querySelectorAll('.border-rose-500').forEach(el => el.classList.remove('border-rose-500', 'ring-2', 'ring-rose-500/20'));
+        
+        // Highlight section
+        target.classList.add('border-rose-500', 'ring-2', 'ring-rose-500/20');
+        
+        const tooltip = document.createElement('div');
+        tooltip.className = 'validation-tooltip fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-rose-600 text-white text-xs font-black py-4 px-8 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8),0_0_20px_rgba(225,29,72,0.6)] z-[999] animate-bounce uppercase tracking-[0.2em] pointer-events-none flex flex-col items-center gap-4 border-2 border-white/20 text-center';
+        tooltip.innerHTML = `
+            <div class="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center text-2xl">
+                <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <span>${message}</span>
+        `;
+        
+        document.body.appendChild(tooltip);
+        
+        // Accurate scroll: align the top of the section with the top of the container
+        if (scrollContainer) {
+            const containerRect = scrollContainer.getBoundingClientRect();
+            const targetRect = target.getBoundingClientRect();
+            const relativeTop = targetRect.top - containerRect.top + scrollContainer.scrollTop;
+            
+            scrollContainer.scrollTo({ 
+                top: relativeTop - 20, 
+                behavior: 'smooth' 
+            });
+        }
+        
+        // Remove after 4 seconds
+        setTimeout(() => {
+            tooltip.style.opacity = '0';
+            tooltip.style.transition = 'opacity 0.5s';
+            setTimeout(() => tooltip.remove(), 500);
+            target.classList.remove('border-rose-500', 'ring-2', 'ring-rose-500/20');
+        }, 4000);
+        
+        // Also cleanup on click
+        const cleanup = () => {
+            tooltip.remove();
+            target.classList.remove('border-rose-500', 'ring-2', 'ring-rose-500/20');
+            target.removeEventListener('click', cleanup);
+        };
+        target.addEventListener('click', cleanup);
+    }
+
+    form.addEventListener('submit', function(e) {
+        const scheduleChecked = form.querySelectorAll('input[name^="pref"][name$="[active]"]:checked').length > 0;
+        const aircraftChecked = form.querySelectorAll('input[name="aircraft[]"]:checked').length > 0;
+        
+        if (!scheduleChecked) {
+            e.preventDefault();
+            showTooltip('schedule-section', 'Selecione ao menos um dia de voo');
+            return;
+        }
+        
+        if (!aircraftChecked) {
+            e.preventDefault();
+            showTooltip('aircraft-section', 'Selecione ao menos uma aeronave');
+            return;
+        }
+    });
+});
+</script>
 
 <?php include '../includes/layout_footer.php'; ?>
