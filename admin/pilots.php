@@ -64,6 +64,20 @@ if (isset($_GET['clear_roster'])) {
     }
 }
 
+// Handle Clear Accepted Roster
+if (isset($_GET['clear_accepted_roster'])) {
+    $pilotId = (int)$_GET['clear_accepted_roster'];
+    try {
+        $stmt = $pdo->prepare("DELETE FROM roster_assignments WHERE pilot_id = ? AND status = 'Accepted'");
+        $stmt->execute([$pilotId]);
+        header("Location: pilots.php?success=Voos aceitos limpos com sucesso!");
+        exit;
+    } catch (Exception $e) {
+        header("Location: pilots.php?error=Erro ao limpar voos aceitos: " . $e->getMessage());
+        exit;
+    }
+}
+
 // Handle Toggle Admin
 if (isset($_GET['toggle_admin'])) {
     $pilotId = (int)$_GET['toggle_admin'];
@@ -230,6 +244,12 @@ include '../includes/layout_header.php';
                                class="p-2 text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition"
                                title="Limpar Escala Sugerida">
                                 <i class="fas fa-calendar-minus"></i>
+                            </a>
+                            <a href="pilots.php?clear_accepted_roster=<?php echo $p['id']; ?>" 
+                               onclick="return confirm('Limpar todos os voos ACEITOS deste piloto?')"
+                               class="p-2 text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition"
+                               title="Limpar Voos Aceitos">
+                                <i class="fas fa-calendar-check"></i>
                             </a>
                             <a href="pilots.php?toggle_admin=<?php echo $p['id']; ?>" 
                                class="p-2 rounded-lg transition <?php echo $p['is_admin'] ? 'text-amber-500 bg-amber-500/10 hover:bg-amber-500/20' : 'text-slate-500 hover:text-white hover:bg-white/10'; ?>"
