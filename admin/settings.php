@@ -15,7 +15,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'lunch_cost' => $_POST['lunch_cost'] ?? '20.00',
         'dinner_cost' => $_POST['dinner_cost'] ?? '15.00',
         'currency_symbol' => $_POST['currency_symbol'] ?? 'R$',
-        'simbrief_username' => $_POST['simbrief_username'] ?? '',
         'simbrief_api_key' => $_POST['simbrief_api_key'] ?? '',
         'fleet_registration_prefixes' => $_POST['fleet_registration_prefixes'] ?? '',
         'pbs_generation_day' => $_POST['pbs_generation_day'] ?? '0'
@@ -45,7 +44,6 @@ $settings = array_merge([
     'lunch_cost' => '20.00',
     'dinner_cost' => '15.00',
     'currency_symbol' => 'R$',
-    'simbrief_username' => '',
     'simbrief_api_key' => '',
     'fleet_registration_prefixes' => 'PR,PT,PP,PS,PU',
     'pbs_generation_day' => '0'
@@ -146,11 +144,7 @@ include '../includes/layout_header.php';
                              <i class="fas fa-network-wired"></i> SimBrief
                         </h4>
                         <div class="grid grid-cols-2 gap-4">
-                            <div class="space-y-1">
-                                <label class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Username</label>
-                                <input type="text" name="simbrief_username" value="<?php echo htmlspecialchars($settings['simbrief_username'] ?? ''); ?>" class="form-input !bg-white/5" placeholder="Simbrief User">
-                            </div>
-                            <div class="space-y-1">
+                            <div class="col-span-2 space-y-1">
                                 <label class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">API Key</label>
                                 <input type="password" name="simbrief_api_key" value="<?php echo htmlspecialchars($settings['simbrief_api_key'] ?? ''); ?>" class="form-input !bg-white/5" placeholder="••••••••">
                             </div>

@@ -7,19 +7,22 @@ $pilotId = getCurrentPilotId($pdo);
 $daysMap = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 $dbDays = [0, 1, 2, 3, 4, 5, 6];
 
-// Fetch Pilot Table Data (specifically for timezone)
-$stmt = $pdo->prepare("SELECT timezone FROM pilots WHERE id = ?");
+// Fetch Pilot Table Data (specifically for timezone and simbrief)
+$stmt = $pdo->prepare("SELECT timezone, simbrief_username FROM pilots WHERE id = ?");
 $stmt->execute([$pilotId]);
-$timezone = $stmt->fetchColumn() ?: 'UTC';
+$pilotData = $stmt->fetch();
+$timezone = $pilotData['timezone'] ?? 'UTC';
+$simbriefUsername = $pilotData['simbrief_username'] ?? '';
 
 // Handle Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $pdo->beginTransaction();
     try {
-        // 1. Update Pilot Timezone
+        // 1. Update Pilot Timezone & SimBrief
         $newTimezone = $_POST['timezone'] ?? 'UTC';
-        $stmt = $pdo->prepare("UPDATE pilots SET timezone = ? WHERE id = ?");
-        $stmt->execute([$newTimezone, $pilotId]);
+        $newSimbrief = $_POST['simbrief_username'] ?? '';
+        $stmt = $pdo->prepare("UPDATE pilots SET timezone = ?, simbrief_username = ? WHERE id = ?");
+        $stmt->execute([$newTimezone, $newSimbrief, $pilotId]);
         $timezone = $newTimezone; // Use new timezone for subsequent conversions
 
         // 2. Update Schedule Preferences
@@ -103,6 +106,7 @@ $pageTitle = "Preferências - SkyCrew OS";
 include '../includes/layout_header.php';
 ?>
 
+
 <div class="flex-1 flex flex-col space-y-6 overflow-hidden max-w-6xl mx-auto w-full">
     <div class="flex justify-between items-center shrink-0">
         <div>
@@ -126,6 +130,43 @@ include '../includes/layout_header.php';
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 pb-6">
                 <!-- Sidebar: General Config & Aircraft (4 cols) -->
                 <div class="lg:col-span-4 space-y-6">
+                    <!-- SimBrief Section -->
+                    <div class="glass-panel p-6 rounded-3xl border border-white/5 space-y-4">
+                        <h3 class="text-[11px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-2">
+                            <i class="fas fa-network-wired text-indigo-400"></i> SimBrief
+                        </h3>
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center ml-1">
+                                <label class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Username</label>
+                                <div id="sb-status" class="text-[8px] font-bold px-2 py-0.5 rounded-full uppercase transition-all duration-300 bg-white/5 text-slate-500">
+                                    --
+                                </div>
+                            </div>
+                            <div class="flex gap-2">
+                                <input type="text" id="simbrief_username" name="simbrief_username" value="<?php echo htmlspecialchars($simbriefUsername); ?>" class="form-input !bg-white/5 border-white/5 focus:!border-indigo-500/50" placeholder="Seu Username no SimBrief">
+                                <button type="button" onclick="checkSimBrief()" class="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 p-2.5 rounded-xl border border-indigo-500/20 transition-all flex items-center justify-center min-w-[40px]">
+                                    <i class="fas fa-sync-alt" id="sb-check-icon"></i>
+                                </button>
+                            </div>
+                            <div id="sb-info" class="hidden space-y-1.5 p-4 bg-black/20 rounded-2xl border border-white/5">
+                                <div class="flex justify-between items-center text-[8px] uppercase tracking-widest font-black">
+                                    <span class="text-slate-500">Último Plano:</span>
+                                    <span id="sb-last-plan" class="text-indigo-300/80">--</span>
+                                </div>
+                                <div class="flex justify-between items-center text-[8px] uppercase tracking-widest font-black">
+                                    <span class="text-slate-500">Voo/Rota:</span>
+                                    <span id="sb-route" class="text-white/60">--</span>
+                                </div>
+                            </div>
+                            <div id="sb-login-link" class="hidden">
+                                <a href="https://www.simbrief.com/system/login.php" target="_blank" class="text-[9px] text-indigo-400 font-bold hover:underline flex items-center gap-1.5 p-2 bg-indigo-500/5 rounded-lg border border-indigo-500/10">
+                                    <i class="fas fa-external-link-alt"></i> Fazer Login no SimBrief
+                                </a>
+                            </div>
+                            <p class="text-[9px] text-slate-500 italic leading-relaxed">* Sua conta SimBrief é usada para o Despacho Operacional.</p>
+                        </div>
+                    </div>
+
                     <!-- Timezone Section -->
                     <div class="glass-panel p-6 rounded-3xl border border-white/5 space-y-4">
                         <h3 class="text-[11px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-2">
@@ -325,6 +366,75 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+
+function checkSimBrief(isAuto = false, callback = null, customUser = null) {
+    const input = document.getElementById('simbrief_username');
+    const statusDiv = document.getElementById('sb-status');
+    const icon = document.getElementById('sb-check-icon');
+    const loginLink = document.getElementById('sb-login-link');
+    const infoBox = document.getElementById('sb-info');
+    const lastPlanSpan = document.getElementById('sb-last-plan');
+    const routeSpan = document.getElementById('sb-route');
+    
+    const username = customUser || (input ? input.value.trim() : '<?php echo $simbriefUsername; ?>');
+
+    if (!username) {
+        if (statusDiv) {
+            statusDiv.innerHTML = "Vazio";
+            statusDiv.className = "text-[8px] font-bold px-2 py-0.5 rounded-full uppercase bg-amber-500/10 text-amber-500 border border-amber-500/20";
+        }
+        if (loginLink) loginLink.classList.remove('hidden');
+        if (infoBox) infoBox.classList.add('hidden');
+        if (callback) callback(false);
+        return;
+    }
+
+    if (icon) icon.classList.add('animate-spin');
+    if (statusDiv) {
+        statusDiv.innerHTML = "Verificando...";
+        statusDiv.className = "text-[8px] font-bold px-2 py-0.5 rounded-full uppercase bg-indigo-500/10 text-indigo-400 border border-indigo-500/20";
+    }
+
+    const apiUrl = '../api/sb_user_check.php';
+
+    fetch(`${apiUrl}?username=${encodeURIComponent(username)}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                if (statusDiv) {
+                    statusDiv.innerHTML = "Sincronizado";
+                    statusDiv.className = "text-[8px] font-bold px-2 py-0.5 rounded-full uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+                }
+                if (loginLink) loginLink.classList.add('hidden');
+                if (infoBox) {
+                    infoBox.classList.remove('hidden');
+                    lastPlanSpan.innerText = data.last_plan;
+                    routeSpan.innerText = `${data.flight}: ${data.route}`;
+                }
+                if (callback) callback(true);
+            } else {
+                if (statusDiv) {
+                    statusDiv.innerHTML = "Não Encontrado";
+                    statusDiv.className = "text-[8px] font-bold px-2 py-0.5 rounded-full uppercase bg-rose-500/10 text-rose-400 border border-rose-500/20";
+                }
+                if (loginLink) loginLink.classList.remove('hidden');
+                if (infoBox) infoBox.classList.add('hidden');
+                if (callback) callback(false);
+            }
+        })
+        .catch(() => {
+            if (statusDiv) {
+                statusDiv.innerHTML = "Erro";
+                statusDiv.className = "text-[8px] font-bold px-2 py-0.5 rounded-full uppercase bg-rose-500/10 text-rose-400 border border-rose-500/20";
+            }
+            if (infoBox) infoBox.classList.add('hidden');
+            if (callback) callback(false);
+        })
+        .finally(() => {
+            if (icon) icon.classList.remove('animate-spin');
+        });
+}
 </script>
 
 <?php include '../includes/layout_footer.php'; ?>

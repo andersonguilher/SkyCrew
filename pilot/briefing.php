@@ -16,9 +16,11 @@ $rosterId = $_GET['flight_id'];
 // Fetch Flight Details
 $stmt = $pdo->prepare("
     SELECT r.id, r.flight_date, fm.flight_number, fm.dep_icao, fm.arr_icao, 
-           fm.dep_time, fm.arr_time, fm.aircraft_type, fm.duration_minutes
+           fm.dep_time, fm.arr_time, fm.aircraft_type, fm.duration_minutes,
+           p.simbrief_username
     FROM roster_assignments r
     JOIN flights_master fm ON r.flight_id = fm.id
+    JOIN pilots p ON r.pilot_id = p.id
     WHERE r.id = ? AND r.pilot_id = ?
 ");
 $stmt->execute([$rosterId, $pilotId]);
@@ -41,6 +43,7 @@ $params = [
     'depm' => substr($flight['dep_time'], 3, 2),
     'steh' => floor($flight['duration_minutes'] / 60),
     'stem' => $flight['duration_minutes'] % 60,
+    'user' => $flight['simbrief_username'] ?? ''
 ];
 $dispatchUrl = $sbUrl . http_build_query($params);
 

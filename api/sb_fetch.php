@@ -1,12 +1,21 @@
 <?php
 require_once '../db_connect.php';
 
+require_once '../includes/auth_session.php';
+
 header('Content-Type: application/json');
 
 // 0. Auth & Input Check
-$settings = getSystemSettings($pdo);
+$pilotId = getCurrentPilotId($pdo);
+$pilotSB = '';
+if ($pilotId) {
+    $stmt = $pdo->prepare("SELECT simbrief_username FROM pilots WHERE id = ?");
+    $stmt->execute([$pilotId]);
+    $pilotSB = $stmt->fetchColumn() ?: '';
+}
+
 // Allow override from frontend if prompting user
-$username = $_GET['sb_user'] ?? $settings['simbrief_username'] ?? '';
+$username = $_GET['sb_user'] ?? $pilotSB;
 $username = trim($username);
 
 if (!$username) {

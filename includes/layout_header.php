@@ -76,11 +76,14 @@ if (!$is_admin && isset($pdo)) {
         .content-area { flex: 1; overflow: hidden; display: flex; padding: 10px 20px 20px 20px; gap: 20px; }
         .scrollable-panel { flex: 1; overflow-y: auto; padding-right: 5px; }
         .section-title { font-weight: 700; font-size: 1.125rem; color: white; display: flex; align-items: center; gap: 2px; margin-bottom: 1rem; }
+        
     </style>
     <?php if (isset($extraHead)) echo $extraHead; ?>
 </head>
 <body>
     <?php echo $bgElement ?? '<div class="immersive-bg"></div>'; ?>
+
+
     <div class="page-container">
         <div class="top-bar glass-panel">
             <div class="flex items-center gap-6">
@@ -188,3 +191,13 @@ if (!$is_admin && isset($pdo)) {
             </div>
         </div>
         <div class="content-area">
+    <script>
+        function openSBLoginPopup() {
+            const width = 1000;
+            const height = 800;
+            const left = (window.screen.width / 2) - (width / 2);
+            const top = (window.screen.height / 2) - (height / 2);
+            window.open('https://www.simbrief.com/system/dispatch.php', 'SimBriefLogin', 
+                `width=${width},height=${height},left=${left},top=${top},menubar=no,status=no,toolbar=no`);
+        }
+    </script>

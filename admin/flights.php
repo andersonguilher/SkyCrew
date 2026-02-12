@@ -244,14 +244,6 @@ $extraHead = '
         .suggest-card:hover { background: rgba(99, 102, 241, 0.2); transform: scale(1.02); }
         select.form-input option { background: #1e1b4b; color: white; }
 
-        /* SimBrief Modal Styles */
-        #sbModal { backdrop-filter: blur(8px); transition: all 0.3s ease; }
-        .sb-modal-content { 
-            transform: scale(0.9); opacity: 0; transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-            background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%);
-        }
-        #sbModal.show .sb-modal-content { transform: scale(1); opacity: 1; }
-        
         .sb-iframe-container {
             background: #000;
             position: relative;
@@ -397,47 +389,6 @@ include '../includes/layout_header.php';
 </form>
 
 
-<!-- SimBrief Loader Modal -->
-<div id="sbModal" class="fixed inset-0 z-[100] hidden flex items-center justify-center p-4">
-    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="closeSbModal()"></div>
-    <div class="sb-modal-content w-full max-w-2xl glass-panel rounded-[32px] overflow-hidden shadow-2xl border border-white/20 z-10 transition-all duration-300">
-        <div class="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30">
-                    <i class="fas fa-bolt text-indigo-400"></i>
-                </div>
-                <div>
-                    <h3 class="text-white font-bold text-base leading-tight">SimBrief Dispatch</h3>
-                    <p class="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">Sincronização em Tempo Real</p>
-                </div>
-            </div>
-            <button onclick="closeSbModal()" class="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        
-        <div class="sb-iframe-container" style="height: 450px; position: relative; background: #000;">
-            <div id="sbLoadingState" class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#0c0e17]">
-                <div class="relative w-16 h-16">
-                    <div class="absolute inset-0 border-4 border-indigo-500/20 rounded-full"></div>
-                    <div class="absolute inset-0 border-4 border-t-indigo-500 rounded-full animate-spin"></div>
-                </div>
-                <p class="text-xs font-bold text-slate-400 mt-6 tracking-[0.2em] uppercase animate-pulse">Conectando ao SimBrief...</p>
-                <p class="text-[10px] text-slate-500 mt-2">Aguardando resposta do servidor</p>
-                <div id="sbStatusText" class="text-[9px] text-indigo-400/60 mt-4 font-mono font-bold uppercase tracking-wider">Iniciando...</div>
-            </div>
-            <iframe id="sbIframe" name="SBworker" src="about:blank" class="w-full h-full border-0" onload="document.getElementById('sbLoadingState').style.display='none'"></iframe>
-        </div>
-        
-        <div class="p-4 bg-indigo-500/5 text-center border-t border-white/5 flex flex-col gap-2">
-            <p class="text-[10px] text-slate-400 italic">Siga as instruções na tela. Esta janela será processada automaticamente ao concluir.</p>
-            <div id="sbManualFallback" class="hidden">
-                 <p class="text-[9px] text-slate-500">Se não fechar automaticamente após o 100%:</p>
-                 <button onclick="checkSBworkerManual()" class="text-indigo-400 text-[10px] font-bold underline">Tentar Sincronização Manual</button>
-            </div>
-        </div>
-    </div>
-</div>
 
 
 <div class="flex-1 flex flex-col justify-end z-10 max-h-full overflow-hidden">
@@ -505,6 +456,7 @@ include '../includes/layout_header.php';
 <script src="../SimBrief_APIv1/simbrief.apiv1.js"></script>
 <script>
     var api_dir = '../SimBrief_APIv1/';
+    sbworkerstyle = 'width=1000,height=800'; // Increase size for full login interface
     let debounceTimer, map, mapObjects = {}, currentBounds = null, plannedRouteLayer = null;
     let isAnimating = false;
     let airportCoordinates = {}; // Lookup for airport positions
@@ -514,30 +466,6 @@ include '../includes/layout_header.php';
     const routeLayerGroup = L.layerGroup();
     const activeFlights = new Set(); // Track only flights currently animating
     const resetTimers = {}; // Store timers for debounce
-
-    // SimBrief Modal Logic
-    function openSbModal() {
-        const modal = document.getElementById('sbModal');
-        modal.classList.remove('hidden');
-        setTimeout(() => modal.classList.add('show'), 10);
-        document.getElementById('sbLoadingState').style.display = 'flex';
-    }
-
-    function closeSbModal() {
-        const modal = document.getElementById('sbModal');
-        modal.classList.remove('show');
-        setTimeout(() => {
-            modal.classList.add('hidden');
-            document.getElementById('sbIframe').src = 'about:blank';
-        }, 300);
-        if (typeof SBloop !== 'undefined' && SBloop) window.clearInterval(SBloop);
-    }
-
-    // Override SimBrief API internals
-    function LaunchSBworker() {
-        openSbModal();
-        return document.getElementById('sbIframe').contentWindow;
-    }
 
     // Aggressive redirection check
     let redirectCheckStarted = false;
@@ -607,14 +535,6 @@ include '../includes/layout_header.php';
         }
     });
 
-    function openSbModal() {
-        const modal = document.getElementById('sbModal');
-        modal.classList.remove('hidden');
-        setTimeout(() => modal.classList.add('show'), 10);
-        document.getElementById('sbLoadingState').style.display = 'flex';
-        document.getElementById('sbManualFallback').classList.add('hidden');
-        setTimeout(() => document.getElementById('sbManualFallback').classList.remove('hidden'), 10000); // Show fallback after 10s
-    }
 
     function getAeronauticalIcon(type, color = '#ffffff') {
         type = (type || 'WPT').toUpperCase();
