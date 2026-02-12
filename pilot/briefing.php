@@ -33,17 +33,18 @@ if (!$flight) {
 // SimBrief URL Construction
 $sbUrl = "https://www.simbrief.com/system/dispatch.php?";
 $params = [
-    'airline' => $sysSettings['va_callsign'],
-    'fltnum' => preg_replace('/\D/', '', $flight['flight_number']),
-    'type' => $flight['aircraft_type'],
-    'orig' => $flight['dep_icao'],
-    'dest' => $flight['arr_icao'],
-    'date' => date('dMy', strtotime($flight['flight_date'])),
-    'deph' => substr($flight['dep_time'], 0, 2),
-    'depm' => substr($flight['dep_time'], 3, 2),
-    'steh' => floor($flight['duration_minutes'] / 60),
-    'stem' => $flight['duration_minutes'] % 60,
-    'user' => $flight['simbrief_username'] ?? ''
+    'newflight' => '1',
+    'airline'   => $sysSettings['va_callsign'],
+    'fltnum'    => preg_replace('/\D/', '', $flight['flight_number']),
+    'type'      => $flight['aircraft_type'],
+    'orig'      => $flight['dep_icao'],
+    'dest'      => $flight['arr_icao'],
+    'date'      => strtoupper(date('dMy', strtotime($flight['flight_date']))),
+    'deph'      => str_pad(substr($flight['dep_time'], 0, 2), 2, '0', STR_PAD_LEFT),
+    'depm'      => str_pad(substr($flight['dep_time'], 3, 2), 2, '0', STR_PAD_LEFT),
+    'steh'      => str_pad(floor($flight['duration_minutes'] / 60), 2, '0', STR_PAD_LEFT),
+    'stem'      => str_pad($flight['duration_minutes'] % 60, 2, '0', STR_PAD_LEFT),
+    'user'      => $flight['simbrief_username'] ?? ''
 ];
 $dispatchUrl = $sbUrl . http_build_query($params);
 
