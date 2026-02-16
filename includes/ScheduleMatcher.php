@@ -64,6 +64,11 @@ class ScheduleMatcher
     {
         $this->initAircraftStates($startDateStr);
 
+        // Fetch flight window enforcement setting (Default: true)
+        $stmt = $this->pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'enforce_flight_windows'");
+        $val = $stmt->fetchColumn();
+        $enforceWindows = ($val === false || $val == '1');
+
         $stmt = $this->pdo->prepare("SELECT * FROM pilots WHERE id = ?");
         $stmt->execute([$pilotId]);
         $pilot = $stmt->fetch();
@@ -94,12 +99,31 @@ class ScheduleMatcher
             $dayOfWeek = (int) $currentDate->format('w');
             $dateStr = $currentDate->format('Y-m-d');
 
+            $pref = null;
             if (isset($preferences[$dayOfWeek])) {
                 $pref = $preferences[$dayOfWeek];
-                $prefStart = new DateTime($dateStr . ' ' . $pref['start_time']);
-                $prefEnd = new DateTime($dateStr . ' ' . $pref['end_time']);
-                $dailyHours = 0;
-                $lastFlightId = null;
+                if (!$enforceWindows) {
+                    // Override strict window if enforcement is off
+                    $pref['start_time'] = '00:00:00';
+                    $pref['end_time'] = '23:59:59';
+                }
+            } elseif (!$enforceWindows) {
+                // Allow scheduling on non-preferred days if enforcement is off
+                $pref = [
+                    'start_time' => '00:00:00', 
+                    'end_time' => '23:59:59', 
+                    'max_daily_hours' => 14
+                ];
+            } else {
+                // Strict mode: No preference -> No flight
+                $currentDate->modify('+1 day');
+                continue;
+            }
+
+            $prefStart = new DateTime($dateStr . ' ' . $pref['start_time']);
+            $prefEnd = new DateTime($dateStr . ' ' . $pref['end_time']);
+            $dailyHours = 0;
+            $lastFlightId = null;
 
                 while (true) {
                     $potentialFlights = $this->getFlightsFrom($currentPilotLocation);
@@ -173,7 +197,7 @@ class ScheduleMatcher
                     if (!$legAdded) break;
                     if ($dailyHours >= $pref['max_daily_hours']) break;
                 }
-            }
+
             $currentDate->modify('+1 day');
             $lastArrivalTime = null; // Reset rest for new day start (but keep location)
         }

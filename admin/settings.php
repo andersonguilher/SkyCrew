@@ -17,7 +17,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'currency_symbol' => $_POST['currency_symbol'] ?? 'R$',
         'simbrief_api_key' => $_POST['simbrief_api_key'] ?? '',
         'fleet_registration_prefixes' => $_POST['fleet_registration_prefixes'] ?? '',
-        'pbs_generation_day' => $_POST['pbs_generation_day'] ?? '0'
+        'pbs_generation_day' => $_POST['pbs_generation_day'] ?? '0',
+        'enforce_flight_windows' => isset($_POST['enforce_flight_windows']) ? '1' : '0'
     ];
 
     try {
@@ -46,7 +47,8 @@ $settings = array_merge([
     'currency_symbol' => 'R$',
     'simbrief_api_key' => '',
     'fleet_registration_prefixes' => 'PR,PT,PP,PS,PU',
-    'pbs_generation_day' => '0'
+    'pbs_generation_day' => '0',
+    'enforce_flight_windows' => '1'
 ], $rows);
 
 $pageTitle = "Configurações - SkyCrew OS";
@@ -181,6 +183,27 @@ include '../includes/layout_header.php';
                                 <button type="button" onclick="handlePBS('clear', this)" class="flex-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 py-2 rounded-lg text-[9px] font-bold uppercase tracking-widest transition">
                                     <i class="fas fa-trash-alt mr-1"></i> Limpar
                                 </button>
+                            </div>
+                        </div>
+
+                    </div>
+                    
+                    <!-- Scheduling Rules -->
+                    <div class="glass-panel p-6 rounded-2xl border-white/5 border-t-2 border-t-amber-500/30">
+                        <h4 class="text-[10px] font-bold text-amber-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                             <i class="fas fa-calendar-alt"></i> Regras de Escala
+                        </h4>
+                        
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest block">Respeitar Janelas de Voo</span>
+                                    <span class="text-[9px] text-slate-600">Se desativado, o sistema ignorará as preferências de horário dos pilotos.</span>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" name="enforce_flight_windows" class="sr-only peer" <?php echo ($settings['enforce_flight_windows'] == '1') ? 'checked' : ''; ?>>
+                                    <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+                                </label>
                             </div>
                         </div>
                     </div>
