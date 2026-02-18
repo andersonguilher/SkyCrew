@@ -106,6 +106,10 @@ if (!$is_admin && isset($pdo)) {
                             <i class="fas fa-plane"></i>
                             <span class="nav-label">Frota</span>
                         </a>
+                        <a href="aircraft_models.php" class="nav-button <?php echo $current_page == 'aircraft_models.php' ? 'active' : ''; ?>" title="Modelos">
+                            <i class="fas fa-drafting-compass"></i>
+                            <span class="nav-label">Modelos</span>
+                        </a>
                         <a href="reports.php" class="nav-button <?php echo $current_page == 'reports.php' ? 'active' : ''; ?>" title="Logbook">
                             <i class="fas fa-book"></i>
                             <span class="nav-label">Logbook</span>

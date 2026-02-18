@@ -19,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'fleet_registration_prefixes' => $_POST['fleet_registration_prefixes'] ?? '',
         'pbs_generation_day' => $_POST['pbs_generation_day'] ?? '0',
         'enforce_flight_windows' => isset($_POST['enforce_flight_windows']) ? '1' : '0',
-        'fuel_price_per_kg' => $_POST['fuel_price_per_kg'] ?? '2.50',
+        'fuel_price' => $_POST['fuel_price'] ?? '2.50',
         'maintenance_per_minute' => $_POST['maintenance_per_minute'] ?? '1.00',
         'airport_fee_parking_per_minute' => $_POST['airport_fee_parking_per_minute'] ?? '0.50',
         'passenger_ticket_price' => $_POST['passenger_ticket_price'] ?? '500.00'
@@ -53,7 +53,7 @@ $settings = array_merge([
     'fleet_registration_prefixes' => 'PR,PT,PP,PS,PU',
     'pbs_generation_day' => '0',
     'enforce_flight_windows' => '1',
-    'fuel_price_per_kg' => '2.50',
+    'fuel_price' => '2.50',
     'maintenance_per_minute' => '1.00',
     'airport_fee_parking_per_minute' => '0.50',
     'passenger_ticket_price' => '500.00'
@@ -150,19 +150,19 @@ include '../includes/layout_header.php';
                             </h4>
                             <div class="grid grid-cols-2 gap-4">
                                 <div class="space-y-1">
-                                    <label class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Combustível (por kg)</label>
-                                    <input type="number" step="0.001" name="fuel_price_per_kg" value="<?php echo htmlspecialchars($settings['fuel_price_per_kg']); ?>" class="form-input !bg-white/5">
+                                    <label class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Preço do Combustível (p/ unidade)</label>
+                                    <input type="number" step="0.001" name="fuel_price" value="<?php echo htmlspecialchars($settings['fuel_price']); ?>" class="form-input !bg-white/5">
                                 </div>
                                 <div class="space-y-1">
-                                    <label class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Manutenção (por minuto)</label>
+                                    <label class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Manutenção Base (p/ min / 100 pax)</label>
                                     <input type="number" step="0.01" name="maintenance_per_minute" value="<?php echo htmlspecialchars($settings['maintenance_per_minute']); ?>" class="form-input !bg-white/5">
                                 </div>
                                 <div class="space-y-1">
-                                    <label class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Taxa de Pátio (por minuto)</label>
+                                    <label class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Pátio Base (p/ min / 100 pax)</label>
                                     <input type="number" step="0.01" name="airport_fee_parking_per_minute" value="<?php echo htmlspecialchars($settings['airport_fee_parking_per_minute']); ?>" class="form-input !bg-white/5">
                                 </div>
                                 <div class="space-y-1">
-                                    <label class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Bilhete Médio PAX</label>
+                                    <label class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Bilhete PAX (por PAX / Hora)</label>
                                     <input type="number" step="1" name="passenger_ticket_price" value="<?php echo htmlspecialchars($settings['passenger_ticket_price']); ?>" class="form-input !bg-white/5">
                                 </div>
                             </div>

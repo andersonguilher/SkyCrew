@@ -28,6 +28,8 @@ $sb_fuel = '';
 $sb_dur = '';
 $sb_fuel = '';
 $sb_pax = '';
+$sb_max_pax = '180';
+$sb_ticket_price = '500.00';
 $sb_waypoints = null;
 
 $edit_id = $_GET['edit_id'] ?? null;
@@ -46,6 +48,8 @@ if ($edit_id) {
         $sb_out = substr($edit_flight['dep_time'], 0, 5);
         $sb_fuel = $edit_flight['estimated_fuel'];
         $sb_pax = $edit_flight['passenger_count'];
+        $sb_max_pax = $edit_flight['max_pax'];
+        $sb_ticket_price = $edit_flight['ticket_price'];
         $sb_waypoints = $edit_flight['route_waypoints'];
     }
 }
@@ -114,6 +118,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $route = $_POST['route'] ?? null;
         $fuel = $_POST['estimated_fuel'] ?? 0;
         $pax = $_POST['passenger_count'] ?? 0;
+        $max_pax = $_POST['max_pax'] ?? 180;
+        $ticket_price = $_POST['ticket_price'] ?? 500.00;
         $waypoints = $_POST['route_waypoints'] ?? null;
         if (trim($waypoints) === '') $waypoints = null;
 
@@ -131,8 +137,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = "O voo $fnum já existe!";
         } else {
             try {
-                $stmt = $pdo->prepare("INSERT INTO flights_master (flight_number, aircraft_id, dep_icao, arr_icao, dep_time, arr_time, aircraft_type, duration_minutes, route, estimated_fuel, passenger_count, route_waypoints) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                $stmt->execute([$fnum, $aircraft_id, $dep, $arr, $dtime, $atime, $ac, $dur, $route, $fuel, $pax, $waypoints]);
+                $stmt = $pdo->prepare("INSERT INTO flights_master (flight_number, aircraft_id, dep_icao, arr_icao, dep_time, arr_time, aircraft_type, duration_minutes, route, estimated_fuel, passenger_count, max_pax, ticket_price, route_waypoints) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt->execute([$fnum, $aircraft_id, $dep, $arr, $dtime, $atime, $ac, $dur, $route, $fuel, $pax, $max_pax, $ticket_price, $waypoints]);
                 $success = "Voo $fnum adicionado com sucesso.";
             } catch (PDOException $e) {
                 $error = "Erro ao salvar: " . $e->getMessage();
@@ -160,6 +166,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $route = $_POST['route'] ?? null;
         $fuel = $_POST['estimated_fuel'] ?? 0;
         $pax = $_POST['passenger_count'] ?? 0;
+        $max_pax = $_POST['max_pax'] ?? 180;
+        $ticket_price = $_POST['ticket_price'] ?? 500.00;
         $waypoints = $_POST['route_waypoints'] ?? null;
         if (trim($waypoints) === '') $waypoints = null;
 
@@ -170,8 +178,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ac = $acData['icao_code'] ?? 'Unknown';
 
         try {
-            $stmt = $pdo->prepare("UPDATE flights_master SET flight_number=?, aircraft_id=?, dep_icao=?, arr_icao=?, dep_time=?, arr_time=?, aircraft_type=?, duration_minutes=?, route=?, estimated_fuel=?, passenger_count=?, route_waypoints=? WHERE id=?");
-            $stmt->execute([$fnum, $aircraft_id, $dep, $arr, $dtime, $atime, $ac, $dur, $route, $fuel, $pax, $waypoints, $id]);
+            $stmt = $pdo->prepare("UPDATE flights_master SET flight_number=?, aircraft_id=?, dep_icao=?, arr_icao=?, dep_time=?, arr_time=?, aircraft_type=?, duration_minutes=?, route=?, estimated_fuel=?, passenger_count=?, max_pax=?, ticket_price=?, route_waypoints=? WHERE id=?");
+            $stmt->execute([$fnum, $aircraft_id, $dep, $arr, $dtime, $atime, $ac, $dur, $route, $fuel, $pax, $max_pax, $ticket_price, $waypoints, $id]);
             $success = "Voo $fnum atualizado com sucesso.";
             // Clear edit mode
             $edit_flight = null;
@@ -319,10 +327,10 @@ include '../includes/layout_header.php';
             <div class="space-y-2">
                 <div class="flex justify-between items-center"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Aeronave</label>
                 <label class="text-[10px] text-slate-500 cursor-pointer hover:text-white transition"><input type="checkbox" id="show_all_ac" class="rounded bg-white/5 border-white/20 text-indigo-500" onchange="checkAvailability()"> Ver Todas</label></div>
-                <select name="aircraft_id" id="ac" class="form-input" required onchange="checkAvailability(true)">
+                <select name="aircraft_id" id="ac" class="form-input" required onchange="checkAvailability(true); calcTicketPrice();">
                     <option value="">Selecione...</option>
                     <?php foreach ($fleet as $f): ?>
-                            <option value="<?php echo $f['id']; ?>" data-location="<?php echo $f['last_location']; ?>" <?php echo ($selected_ac == $f['id']) ? 'selected' : ''; ?>>
+                            <option value="<?php echo $f['id']; ?>" data-location="<?php echo $f['last_location']; ?>" data-icao="<?php echo $f['icao_code']; ?>" <?php echo ($selected_ac == $f['id']) ? 'selected' : ''; ?>>
                                 <?php echo $f['registration']; ?> (<?php echo $f['icao_code']; ?>) - <?php echo $f['last_location']; ?>
                             </option>
                     <?php endforeach; ?>
@@ -361,14 +369,25 @@ include '../includes/layout_header.php';
                 <div class="space-y-2"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Saída (Z)</label>
                 <input type="time" id="dep_time" name="dep_time" class="form-input p-1" onchange="calcArrTime()" value="<?php echo htmlspecialchars($sb_out ?? ''); ?>" required></div>
                 <div class="space-y-2"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">EET</label>
-                <input type="number" id="dur" name="duration" class="form-input p-1" onchange="calcArrTime()" value="<?php echo htmlspecialchars($sb_dur ?: ($_POST['duration'] ?? '')); ?>" required></div>
+                <input type="number" id="dur" name="duration" class="form-input p-1" onchange="calcArrTime(); calcTicketPrice();" value="<?php echo htmlspecialchars($sb_dur ?: ($_POST['duration'] ?? '')); ?>" required></div>
                 <div class="space-y-2"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Chegada (Z)</label>
                 <input type="time" id="arr_time" name="arr_time" class="form-input p-1 bg-white/5 pointer-events-none opacity-50" readonly required tabindex="-1"></div>
             </div>
             <div class="grid grid-cols-2 gap-3">
+                <div class="space-y-2"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Capacidade (MAX PAX)</label>
+                <input type="number" id="max_pax" name="max_pax" value="<?php echo htmlspecialchars($sb_max_pax ?: ($_POST['max_pax'] ?? '180')); ?>" class="form-input p-1 bg-white/5 opacity-60" readonly tabindex="-1"></div>
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Preço Bilhete (R$)</label>
+                        <span id="ticket_auto" class="text-[9px] text-emerald-400 font-bold hidden"><i class="fas fa-magic mr-1"></i>AUTO</span>
+                    </div>
+                    <input type="number" step="0.01" id="ticket_price" name="ticket_price" value="<?php echo htmlspecialchars($sb_ticket_price ?: ($_POST['ticket_price'] ?? '500.00')); ?>" class="form-input p-1">
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
                 <div class="space-y-2"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Combustível Est. (Kg)</label>
                 <input type="number" name="estimated_fuel" value="<?php echo htmlspecialchars($sb_fuel ?: ($_POST['estimated_fuel'] ?? '')); ?>" class="form-input p-1"></div>
-                <div class="space-y-2"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Passageiros</label>
+                <div class="space-y-2"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">PAX Planejados</label>
                 <input type="number" name="passenger_count" value="<?php echo htmlspecialchars($sb_pax ?: ($_POST['passenger_count'] ?? '')); ?>" class="form-input p-1"></div>
             </div>
             <input type="hidden" name="route_waypoints" value='<?php echo htmlspecialchars($sb_waypoints ?: ($_POST['route_waypoints'] ?? '')); ?>'>
@@ -430,8 +449,9 @@ include '../includes/layout_header.php';
                                 <td class="px-6 py-3 font-mono"><?php echo substr($f['dep_time'], 0, 5); ?> - <?php echo substr($f['arr_time'], 0, 5); ?></td>
                                 <td class="px-6 py-3">
                                     <div class="flex flex-col text-[10px]">
-                                        <span class="text-slate-200"><i class="fas fa-users text-slate-500 mr-1 w-4"></i> <?php echo $f['passenger_count']; ?></span>
-                                        <span class="text-slate-200"><i class="fas fa-gas-pump text-slate-500 mr-1 w-4"></i> <?php echo number_format($f['estimated_fuel']); ?> kg</span>
+                                        <span class="text-slate-200"><i class="fas fa-users text-slate-500 mr-1 w-4"></i> <?php echo $f['passenger_count']; ?> / <?php echo $f['max_pax']; ?></span>
+                                        <span class="text-emerald-400 font-bold"><i class="fas fa-ticket-alt text-slate-500 mr-1 w-4"></i> R$ <?php echo number_format($f['ticket_price'], 2); ?></span>
+                                        <span class="text-slate-400 mt-1"><i class="fas fa-gas-pump text-slate-500 mr-1 w-4"></i> <?php echo number_format($f['estimated_fuel']); ?> kg</span>
                                     </div>
                                 </td>
                                 <td class="px-6 py-3 flex flex-col"><span class="font-bold text-slate-200"><?php echo $f['registration'] ?: '--'; ?></span><span class="text-[9px] text-slate-500 uppercase"><?php echo $f['aircraft_type']; ?></span></td>
@@ -1413,6 +1433,33 @@ include '../includes/layout_header.php';
             document.getElementById('arr_time').value = `${String(Math.floor(t / 60) % 24).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
         } else {
             document.getElementById('arr_time').value = "";
+        }
+    }
+
+
+    async function calcTicketPrice() {
+        const acEl = document.getElementById('ac');
+        const durEl = document.getElementById('dur');
+        const ticketEl = document.getElementById('ticket_price');
+        const maxPaxEl = document.getElementById('max_pax');
+        const autoTag = document.getElementById('ticket_auto');
+        
+        if (!acEl.value || !durEl.value) return;
+        
+        const icao = acEl.options[acEl.selectedIndex]?.getAttribute('data-icao');
+        if (!icao) return;
+        
+        try {
+            const r = await fetch(`../api/calc_ticket_price.php?model=${icao}&duration=${durEl.value}`);
+            const data = await r.json();
+            
+            if (data.ticket_price > 0) {
+                ticketEl.value = data.ticket_price.toFixed(2);
+                maxPaxEl.value = data.max_pax;
+                if (autoTag) autoTag.classList.remove('hidden');
+            }
+        } catch(e) {
+            console.error('Erro ao calcular preço:', e);
         }
     }
 

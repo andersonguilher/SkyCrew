@@ -68,16 +68,17 @@ $rosterId = $data['roster_id'];
 
 // 2. Fetch System Settings for Calculations
 $settings = getSystemSettings($pdo);
-$fuelPrice = (float)($settings['fuel_price_per_kg'] ?? 2.50);
+$fuelPrice = (float)($settings['fuel_price'] ?? 2.50);
 $maintenanceRate = (float)($settings['maintenance_per_minute'] ?? 1.00);
 $parkingRate = (float)($settings['airport_fee_parking_per_minute'] ?? 0.50);
-$ticketPrice = (float)($settings['passenger_ticket_price'] ?? 500.00);
+$ticketPriceRate = (float)($settings['passenger_ticket_price'] ?? 500.00);
 
 // Fetch Roster/Flight Data
 $stmt = $pdo->prepare("
-    SELECT fm.*, r.flight_date 
+    SELECT fm.*, r.flight_date, fl.maintenance_rate as ac_maintenance_rate
     FROM roster_assignments r 
     JOIN flights_master fm ON r.flight_id = fm.id 
+    LEFT JOIN fleet fl ON fm.aircraft_id = fl.id
     WHERE r.id = ?
 ");
 $stmt->execute([$rosterId]);
@@ -103,8 +104,39 @@ $flightTimeHours = ($endTime - $startTime) / 3600;
 $flightTimeMinutes = ($endTime - $startTime) / 60;
 
 // 4. Financial Calculations
+// Determine Pax Count (Strictly from log as per user request)
+// Key can be 'pax', 'PaxCount', 'Passengers' or 'passenger_count'
+$paxCount = (int)($data['pax'] ?? $data['PaxCount'] ?? $data['Passengers'] ?? $data['passenger_count'] ?? 0);
+
+// Fallback logic: If missing in log, we could check flights_master.passenger_count 
+// but the user said "virá no logo" (it will come in the log). 
+// We'll use 0 if not provided, or 1 to avoid division by zero issues in other contexts (though not here).
+
+// Size multiplier (using 100 pax as baseline for configured rates)
+// This implements the user request: "definir pelo número de passageiros carregados"
+$sizeFactor = $paxCount / 100;
+if ($sizeFactor < 0.05) $sizeFactor = 0.05; // Minimum factor to avoid zero costs for ferry flights
+
+// Simplified Fuel Calculation
 $fuelCost = $fuelConsumed * $fuelPrice;
-$maintenanceCost = $flightTimeMinutes * $maintenanceRate;
+
+// Maintenance Cost: computed from aircraft model's component data
+$aircraftType = $flightInfo['aircraft_type'] ?? '';
+$stmtMaint = $pdo->prepare("
+    SELECT COALESCE(SUM(cost_preventive / interval_fh), 0) as maint_per_fh
+    FROM aircraft_maintenance WHERE model_icao = ?
+");
+$stmtMaint->execute([$aircraftType]);
+$maintPerFH = (float)$stmtMaint->fetchColumn();
+
+if ($maintPerFH > 0) {
+    // Use real component-based costs
+    $maintenanceCost = $maintPerFH * $flightTimeHours;
+} else {
+    // Fallback to flat rate from fleet or global settings
+    $finalMaintRate = (float)($flightInfo['ac_maintenance_rate'] ?? $maintenanceRate);
+    $maintenanceCost = $flightTimeMinutes * $finalMaintRate;
+}
 
 // Parking Fee calculation
 $engineStartTime = null;
@@ -127,12 +159,11 @@ $scheduledDepTime = strtotime($scheduledDepStr);
 $parkingBefore = ($engineStartTime && $engineStartTime > $scheduledDepTime) ? ($engineStartTime - $scheduledDepTime) : 0;
 $parkingAfter = ($shutdownTime && $touchdownTime && $shutdownTime > $touchdownTime) ? ($shutdownTime - $touchdownTime) : 0;
 $totalParkingMinutes = ($parkingBefore + $parkingAfter) / 60;
-$airportFees = $totalParkingMinutes * $parkingRate;
+$airportFees = ($totalParkingMinutes * $parkingRate) * $sizeFactor;
 
-// Passenger Revenue
-$maxPax = (int)($flightInfo['max_pax'] ?? 0);
-$paxCount = 5; // Fixed simulation according to user request
-$revenue = $paxCount * $ticketPrice;
+// Passenger Revenue (using route-specific ticket price)
+$routeTicketPrice = (float)($flightInfo['ticket_price'] ?? 500.00);
+$revenue = $paxCount * $routeTicketPrice;
 
 // Pilot Pay
 $stmt = $pdo->prepare("SELECT pay_rate FROM ranks WHERE rank_name = ?");
@@ -192,7 +223,7 @@ try {
     
     $stmt->execute([
         $pilotId, $rosterId, round($flightTimeHours, 2), $fuelConsumed, (int)$verticalSpeed, 
-        $paxCount, $revenue, $comments, $incidents, $logJson, $verticalSpeed, 
+        $paxCount, $revenue, $comments, $incidents, $logJson, (int)$verticalSpeed, 
         $points, $maintenanceCost, $airportFees, $fuelCost, $pilotPay
     ]);
 
@@ -232,7 +263,7 @@ try {
     ]);
 
 } catch (Exception $e) {
-    $pdo->rollBack();
-    http_response_code(500);
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    if (!$isCLI) http_response_code(500);
     echo json_encode(['error' => 'Database Error: ' . $e->getMessage()]);
 }
