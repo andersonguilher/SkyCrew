@@ -277,6 +277,18 @@ include '../includes/layout_header.php';
                 </div>
             </div>
 
+            <!-- Points Card -->
+            <div class="glass-panel p-6 rounded-3xl border-l-4 border-amber-500 relative overflow-hidden">
+                <div class="absolute -right-4 -bottom-4 opacity-5 transform rotate-12">
+                    <i class="fas fa-star text-8xl"></i>
+                </div>
+                <div class="relative z-10">
+                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Score de Voo (Ranking)</p>
+                    <h3 class="text-2xl font-bold text-amber-400 mt-1"><?php echo number_format($pilot['points'] ?? 0, 0); ?> <span class="text-xs text-slate-500">pts</span></h3>
+                    <p class="text-[9px] text-slate-500 font-bold mt-1 uppercase tracking-tighter">Acumulado em Ciclos</p>
+                </div>
+            </div>
+
             <!-- Base Card -->
             <div class="glass-panel p-6 rounded-3xl border-l-4 border-blue-500">
                 <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Base de Operações</p>

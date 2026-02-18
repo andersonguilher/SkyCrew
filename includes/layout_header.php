@@ -110,6 +110,10 @@ if (!$is_admin && isset($pdo)) {
                             <i class="fas fa-users"></i>
                             <span class="nav-label">Pilotos</span>
                         </a>
+                        <a href="reports.php" class="nav-button <?php echo $current_page == 'reports.php' ? 'active' : ''; ?>" title="Relatórios">
+                            <i class="fas fa-file-signature"></i>
+                            <span class="nav-label">Relatórios</span>
+                        </a>
                         <a href="financials.php" class="nav-button <?php echo $current_page == 'financials.php' ? 'active' : ''; ?>" title="Financeiro">
                             <i class="fas fa-wallet"></i>
                             <span class="nav-label">Financeiro</span>

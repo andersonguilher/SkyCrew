@@ -28,9 +28,9 @@ if (isset($_POST['approve_id'])) {
             $stmt->execute([$report['pilot_id']]);
             $pilotData = $stmt->fetch();
 
-            $hourlyRate = $pilotData['pay_rate'] ?? 15.00;
-            $earnings = $report['flight_time'] * $hourlyRate;
+            $earnings = $report['pilot_pay'];
             $newHours = $pilotData['total_hours'] + $report['flight_time'];
+            $newPoints = $pilotData['points'] + $report['points'];
 
             // Check for Promotion
             $nextRankStmt = $pdo->prepare("SELECT * FROM ranks WHERE min_hours <= ? ORDER BY min_hours DESC LIMIT 1");
@@ -38,8 +38,8 @@ if (isset($_POST['approve_id'])) {
             $newRankData = $nextRankStmt->fetch();
             $newRank = $newRankData ? $newRankData['rank_name'] : $pilotData['rank'];
 
-            $updateStmt = $pdo->prepare("UPDATE pilots SET total_hours = ?, balance = balance + ?, rank = ? WHERE id = ?");
-            $updateStmt->execute([$newHours, $earnings, $newRank, $report['pilot_id']]);
+            $updateStmt = $pdo->prepare("UPDATE pilots SET total_hours = ?, balance = balance + ?, `rank` = ?, points = ? WHERE id = ?");
+            $updateStmt->execute([$newHours, $earnings, $newRank, $newPoints, $report['pilot_id']]);
 
             // 4. Update Aircraft Location and Roster Status
             $stmt = $pdo->prepare("
@@ -67,6 +67,17 @@ if (isset($_POST['approve_id'])) {
     } catch (Exception $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         $error = "Erro: " . $e->getMessage();
+    }
+}
+
+if (isset($_POST['reject_id'])) {
+    $reportId = $_POST['reject_id'];
+    try {
+        $stmt = $pdo->prepare("UPDATE flight_reports SET status = 'Rejected' WHERE id = ?");
+        $stmt->execute([$reportId]);
+        $success = "Relatório rejeitado.";
+    } catch (Exception $e) {
+        $error = "Erro ao rejeitar: " . $e->getMessage();
     }
 }
 
@@ -165,6 +176,33 @@ include '../includes/layout_header.php';
                                 <p class="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Data/Hora Sub</p>
                                 <p class="text-white font-bold text-[11px]"><?php echo date('d/m H:i', strtotime($r['submitted_at'])); ?> Z</p>
                             </div>
+                            <div class="bg-indigo-500/10 border border-indigo-500/20 p-3 rounded-2xl">
+                                <p class="text-[9px] font-bold text-indigo-400 uppercase tracking-widest mb-1">Score do Voo</p>
+                                <p class="text-white font-bold"><?php echo $r['points']; ?> pts</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="bg-emerald-500/5 border border-emerald-500/10 p-3 rounded-2xl">
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Financeiro (Estimado)</span>
+                                    <span class="text-[9px] font-bold text-emerald-400 uppercase"><?php echo $r['pax']; ?> PAX</span>
+                                </div>
+                                <div class="flex justify-between text-[11px]">
+                                    <span class="text-slate-400">Receita Bruta:</span>
+                                    <span class="text-emerald-400 font-mono font-bold">+ <?php echo number_format($r['revenue'], 2, ',', '.'); ?></span>
+                                </div>
+                                <div class="flex justify-between text-[11px] mt-1">
+                                    <span class="text-slate-400">Total Despesas:</span>
+                                    <span class="text-rose-400 font-mono font-bold">- <?php echo number_format($r['fuel_cost'] + $r['maintenance_cost'] + $r['airport_fees'], 2, ',', '.'); ?></span>
+                                </div>
+                            </div>
+                            <div class="bg-blue-500/5 border border-blue-500/10 p-3 rounded-2xl flex flex-col justify-center">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-[9px] font-bold text-blue-400 uppercase tracking-widest">Pagamento Piloto</span>
+                                    <span class="text-white font-mono font-bold text-sm"><?php echo number_format($r['pilot_pay'], 2, ',', '.'); ?></span>
+                                </div>
+                            </div>
                         </div>
 
                         <?php if ($r['comments']): ?>
@@ -199,9 +237,12 @@ include '../includes/layout_header.php';
                                 <i class="fas fa-check-double mr-2"></i> Aprovar
                             </button>
                         </form>
-                        <button class="w-full py-4 bg-rose-500/5 hover:bg-rose-500/10 text-rose-400 border border-rose-500/10 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all">
-                            <i class="fas fa-times mr-2"></i> Rejeitar
-                        </button>
+                        <form method="POST">
+                            <input type="hidden" name="reject_id" value="<?php echo $r['id']; ?>">
+                            <button type="submit" onclick="return confirm('Tem certeza que deseja rejeitar este relatório?')" class="w-full py-4 bg-rose-500/5 hover:bg-rose-500/10 text-rose-400 border border-rose-500/10 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all">
+                                <i class="fas fa-times mr-2"></i> Rejeitar
+                            </button>
+                        </form>
                     </div>
                 </div>
             <?php endforeach; ?>

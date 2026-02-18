@@ -1,0 +1,148 @@
+{
+    "email": "andersonguilherm@gmail.com",
+    "roster_id": 29,
+    "Events": [
+        {
+            "Phase": "Parking",
+            "IsError": false,
+            "Message": "Flight initialized (Cold & Dark) - Systems ON",
+            "Latitude": -22.988604106486964,
+            "Longitude": -43.371083878800974,
+            "Timestamp": "2026-02-18T05:04:58.738784-03:00",
+            "IsResolved": false,
+            "ResolvedTimestamp": null
+        },
+        {
+            "Phase": "EngineStart",
+            "IsError": false,
+            "Message": "Phase changed to EngineStart",
+            "Latitude": -22.988604113505676,
+            "Longitude": -43.37108388639613,
+            "Timestamp": "2026-02-18T05:05:39.7884793-03:00",
+            "IsResolved": false,
+            "ResolvedTimestamp": null
+        },
+        {
+            "Phase": "EngineStart",
+            "IsError": true,
+            "Message": "RESOLVED: Beacon lights OFF with engines running",
+            "Latitude": -22.988604156583012,
+            "Longitude": -43.37108389124272,
+            "Timestamp": "2026-02-18T05:05:49.8174063-03:00",
+            "IsResolved": true,
+            "ResolvedTimestamp": "2026-02-18T05:06:36.8087704-03:00"
+        },
+        {
+            "Phase": "TaxiOut",
+            "IsError": false,
+            "Message": "Phase changed to TaxiOut",
+            "Latitude": -22.988607908950023,
+            "Longitude": -43.371083683756765,
+            "Timestamp": "2026-02-18T05:07:07.4113617-03:00",
+            "IsResolved": false,
+            "ResolvedTimestamp": null
+        },
+        {
+            "Phase": "TakeoffRoll",
+            "IsError": false,
+            "Message": "Phase changed to TakeoffRoll",
+            "Latitude": -22.98805278622903,
+            "Longitude": -43.372263166514266,
+            "Timestamp": "2026-02-18T05:08:37.5334357-03:00",
+            "IsResolved": false,
+            "ResolvedTimestamp": null
+        },
+        {
+            "Phase": "Takeoff",
+            "IsError": false,
+            "Message": "Phase changed to Takeoff",
+            "Latitude": -22.990451717064506,
+            "Longitude": -43.37241898977844,
+            "Timestamp": "2026-02-18T05:08:46.3156078-03:00",
+            "IsResolved": false,
+            "ResolvedTimestamp": null
+        },
+        {
+            "Phase": "Climb",
+            "IsError": false,
+            "Message": "Phase changed to Climb",
+            "Latitude": -23.006690030569004,
+            "Longitude": -43.3909729969707,
+            "Timestamp": "2026-02-18T05:09:35.4826735-03:00",
+            "IsResolved": false,
+            "ResolvedTimestamp": null
+        },
+        {
+            "Phase": "Descent",
+            "IsError": false,
+            "Message": "Phase changed to Descent",
+            "Latitude": -23.009739948458957,
+            "Longitude": -43.41013841642058,
+            "Timestamp": "2026-02-18T05:10:01.0229585-03:00",
+            "IsResolved": false,
+            "ResolvedTimestamp": null
+        },
+        {
+            "Phase": "Approach",
+            "IsError": false,
+            "Message": "Phase changed to Approach",
+            "Latitude": -23.00974759383383,
+            "Longitude": -43.41017697091704,
+            "Timestamp": "2026-02-18T05:10:01.0671032-03:00",
+            "IsResolved": false,
+            "ResolvedTimestamp": null
+        },
+        {
+            "Phase": "Approach",
+            "IsError": false,
+            "Message": "Touchdown: -74 fpm - Butter",
+            "Latitude": -22.940391323820425,
+            "Longitude": -43.72291326845133,
+            "Timestamp": "2026-02-18T05:17:41.6873768-03:00",
+            "IsResolved": false,
+            "ResolvedTimestamp": null
+        },
+        {
+            "Phase": "Rollout",
+            "IsError": false,
+            "Message": "Phase changed to Rollout",
+            "Latitude": -22.940391323820425,
+            "Longitude": -43.72291326845133,
+            "Timestamp": "2026-02-18T05:17:41.687568-03:00",
+            "IsResolved": false,
+            "ResolvedTimestamp": null
+        },
+        {
+            "Phase": "TaxiIn",
+            "IsError": false,
+            "Message": "Phase changed to TaxiIn",
+            "Latitude": -22.937013951713197,
+            "Longitude": -43.721048981070446,
+            "Timestamp": "2026-02-18T05:18:00.496366-03:00",
+            "IsResolved": false,
+            "ResolvedTimestamp": null
+        },
+        {
+            "Phase": "Shutdown",
+            "IsError": false,
+            "Message": "Phase changed to Shutdown",
+            "Latitude": -22.937299209050124,
+            "Longitude": -43.720177984875384,
+            "Timestamp": "2026-02-18T05:18:30.2828875-03:00",
+            "IsResolved": false,
+            "ResolvedTimestamp": null
+        }
+    ],
+    "EndTime": "2026-02-18T05:18:30.2980252-03:00",
+    "Landing": {
+        "Rating": "Butter",
+        "Airspeed": 72.19947814941406,
+        "Timestamp": "2026-02-18T05:17:41.6873411-03:00",
+        "VerticalSpeed": -74.13598537445054
+    },
+    "FinalFuel": 29.624771118164062,
+    "StartTime": "2026-02-18T05:04:58.738587-03:00",
+    "InitialFuel": 34.03834915161133,
+    "AircraftType": "k Square Baron 58 Professional N513LW",
+    "FuelConsumed": 4.413578033447266
+}

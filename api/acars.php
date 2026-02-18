@@ -4,79 +4,215 @@
 header('Content-Type: application/json');
 require_once '../db_connect.php';
 
-// Check Method
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+// Detect if running from CLI or Web
+$isCLI = (php_sapi_name() === 'cli');
+
+if (!$isCLI && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['error' => 'Method Not Allowed']);
     exit;
 }
 
 // Get JSON Input
-$input = file_get_contents('php://input');
+if ($isCLI) {
+    // In CLI, we take the JSON from the first argument
+    $input = $argv[1] ?? '';
+} else {
+    $input = file_get_contents('php://input');
+}
+
 $data = json_decode($input, true);
 
 if (!$data) {
-    http_response_code(400);
-    echo json_encode(['error' => 'Invalid JSON']);
+    if (!$isCLI) http_response_code(400);
+    echo json_encode(['error' => 'Invalid JSON input']);
     exit;
 }
 
 // Validate required fields
-// Expected: email, password (or token), roster_id, flight_time, fuel_used, landing_rate
 if (!isset($data['email']) || !isset($data['roster_id'])) {
-    http_response_code(400);
-    echo json_encode(['error' => 'Missing required fields']);
+    if (!$isCLI) http_response_code(400);
+    echo json_encode(['error' => 'Missing required identification fields (email, roster_id)']);
     exit;
 }
 
-// 1. Authenticate Pilot inside API mainly for security
-// In production, use Bearer Token, but for MVP/Toolbar simple auth:
-$stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
+// 1. Authenticate Request
+$settings = getSystemSettings($pdo);
+$internalKey = $settings['internal_api_key'] ?? null;
+$isAuthenticated = $isCLI; // If CLI, we assume local trust
+
+// Check if it's the internal WebSocket server
+if ($internalKey && isset($data['api_key']) && $data['api_key'] === $internalKey) {
+    $isAuthenticated = true;
+}
+
+// Fallback to Pilot Password (if provided)
+$stmt = $pdo->prepare("SELECT u.*, p.id as pilot_id, p.rank FROM users u JOIN pilots p ON u.id = p.user_id WHERE u.email = ?");
 $stmt->execute([$data['email']]);
 $user = $stmt->fetch();
 
-// You might want to actually check password here if the toolbar prompts for it,
-// or generate an API Key for the pilot user.
-// For simplicitly, we assume the toolbar sends a valid 'api_key' or we trust the email if simple local setup.
-// Let's implement Password check if provided, or proceed if trusted env.
-// WE WILL REQUIRE PASSWORD for security proof of concept.
-if (!$user || !password_verify($data['password'], $user['password'])) {
-    http_response_code(401);
-    echo json_encode(['error' => 'Unauthorized']);
+if (!$isAuthenticated) {
+    if (!$user || !isset($data['password']) || !password_verify($data['password'], $user['password'])) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Unauthorized']);
+        exit;
+    }
+} elseif (!$user) {
+    http_response_code(404);
+    echo json_encode(['error' => 'Pilot not found for the provided email']);
     exit;
 }
 
-// Get Pilot ID
-$stmt = $pdo->prepare("SELECT id FROM pilots WHERE user_id = ?");
-$stmt->execute([$user['id']]);
-$pilot = $stmt->fetch();
-$pilotId = $pilot['id'];
-
-// 2. Process Flight Data
+$pilotId = $user['pilot_id'];
 $rosterId = $data['roster_id'];
-$flightTime = $data['flight_time'];
-$fuelUsed = $data['fuel_used'];
-$landingRate = $data['landing_rate'];
-$incidents = isset($data['incidents']) ? json_encode($data['incidents']) : null;
-$comments = "Auto-filing via ACARS Toolbar";
 
+// 2. Fetch System Settings for Calculations
+$settings = getSystemSettings($pdo);
+$fuelPrice = (float)($settings['fuel_price_per_kg'] ?? 2.50);
+$maintenanceRate = (float)($settings['maintenance_per_minute'] ?? 1.00);
+$parkingRate = (float)($settings['airport_fee_parking_per_minute'] ?? 0.50);
+$ticketPrice = (float)($settings['passenger_ticket_price'] ?? 500.00);
+
+// Fetch Roster/Flight Data
+$stmt = $pdo->prepare("
+    SELECT fm.*, r.flight_date 
+    FROM roster_assignments r 
+    JOIN flights_master fm ON r.flight_id = fm.id 
+    WHERE r.id = ?
+");
+$stmt->execute([$rosterId]);
+$flightInfo = $stmt->fetch();
+
+if (!$flightInfo) {
+    http_response_code(404);
+    echo json_encode(['error' => 'Roster assignment not found']);
+    exit;
+}
+
+// 3. Extract Data from Log
+$events = $data['Events'] ?? [];
+$landing = $data['Landing'] ?? [];
+$startTimeStr = $data['StartTime'] ?? date('c');
+$endTimeStr = $data['EndTime'] ?? date('c');
+$fuelConsumed = (float)($data['FuelConsumed'] ?? 0);
+$verticalSpeed = (float)($landing['VerticalSpeed'] ?? 0);
+
+$startTime = strtotime($startTimeStr);
+$endTime = strtotime($endTimeStr);
+$flightTimeHours = ($endTime - $startTime) / 3600;
+$flightTimeMinutes = ($endTime - $startTime) / 60;
+
+// 4. Financial Calculations
+$fuelCost = $fuelConsumed * $fuelPrice;
+$maintenanceCost = $flightTimeMinutes * $maintenanceRate;
+
+// Parking Fee calculation
+$engineStartTime = null;
+$touchdownTime = null;
+$shutdownTime = null;
+
+foreach ($events as $event) {
+    if ($event['Phase'] === 'EngineStart' && !$engineStartTime) $engineStartTime = strtotime($event['Timestamp']);
+    if ($event['Phase'] === 'Shutdown' && !$shutdownTime) $shutdownTime = strtotime($event['Timestamp']);
+    if (($event['Phase'] === 'Approach' || $event['Phase'] === 'Rollout') && stripos($event['Message'], 'Touchdown') !== false && !$touchdownTime) {
+        $touchdownTime = strtotime($event['Timestamp']);
+    }
+}
+// Fallback for touchdown if not found in events
+if (!$touchdownTime && isset($landing['Timestamp'])) $touchdownTime = strtotime($landing['Timestamp']);
+
+// Scheduled Departure vs Actual Engine Start
+$scheduledDepStr = $flightInfo['flight_date'] . ' ' . $flightInfo['dep_time'];
+$scheduledDepTime = strtotime($scheduledDepStr);
+$parkingBefore = ($engineStartTime && $engineStartTime > $scheduledDepTime) ? ($engineStartTime - $scheduledDepTime) : 0;
+$parkingAfter = ($shutdownTime && $touchdownTime && $shutdownTime > $touchdownTime) ? ($shutdownTime - $touchdownTime) : 0;
+$totalParkingMinutes = ($parkingBefore + $parkingAfter) / 60;
+$airportFees = $totalParkingMinutes * $parkingRate;
+
+// Passenger Revenue
+$maxPax = (int)($flightInfo['max_pax'] ?? 0);
+$paxCount = 5; // Fixed simulation according to user request
+$revenue = $paxCount * $ticketPrice;
+
+// Pilot Pay
+$stmt = $pdo->prepare("SELECT pay_rate FROM ranks WHERE rank_name = ?");
+$stmt->execute([$user['rank']]);
+$payRate = (float)($stmt->fetchColumn() ?: 15.00);
+$pilotPay = $flightTimeHours * $payRate;
+
+// 5. Ranking Points
+$points = 100; // Base points
+
+// Punctuality penalty/bonus
+if ($engineStartTime) {
+    $delay = $engineStartTime - $scheduledDepTime;
+    if ($delay <= 300) $points += 20; // Within 5 min
+    else if ($delay > 900) $points -= 20; // Over 15 min late
+}
+
+// Landing Smoothness
+if ($verticalSpeed >= -150) $points += 25; // Butter
+else if ($verticalSpeed >= -300) $points += 10;
+else if ($verticalSpeed >= -500) $points -= 15;
+else $points -= 40; // Hard landing
+
+// Errors in log
+$errorCount = 0;
+$criticalErrors = 0;
+foreach ($events as $event) {
+    if (isset($event['IsError']) && $event['IsError']) {
+        $errorCount++;
+        if (stripos($event['Message'], 'overspeed') !== false || 
+            stripos($event['Message'], 'G-force') !== false || 
+            stripos($event['Message'], 'Bank angle') !== false) {
+            $criticalErrors++;
+        }
+    }
+}
+$points -= ($errorCount * 10);
+$points -= ($criticalErrors * 40);
+
+// Ensure points don't go below 0 for a flight (optional)
+$points = max(0, $points);
+
+// 6. Save Report
 try {
     $pdo->beginTransaction();
 
-    // Check if report already exists for this roster?
-    // ... logic skipped for brevity, assuming simple insert
+    $logJson = json_encode($data);
+    $incidents = $criticalErrors > 0 ? "Critical flight errors detected!" : null;
+    $comments = "Auto-filing via Advanced ACARS Client";
 
-    // Insert Report
-    $stmt = $pdo->prepare("INSERT INTO flight_reports (pilot_id, roster_id, flight_time, fuel_used, landing_rate, comments, incidents, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending')");
-    $stmt->execute([$pilotId, $rosterId, $flightTime, $fuelUsed, $landingRate, $comments, $incidents]);
+    $stmt = $pdo->prepare("
+        INSERT INTO flight_reports 
+        (pilot_id, roster_id, flight_time, fuel_used, landing_rate, pax, revenue, 
+         comments, incidents, status, log_json, vertical_speed_touchdown, 
+         points, maintenance_cost, airport_fees, fuel_cost, pilot_pay) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?, ?, ?, ?)
+    ");
+    
+    $stmt->execute([
+        $pilotId, $rosterId, round($flightTimeHours, 2), $fuelConsumed, (int)$verticalSpeed, 
+        $paxCount, $revenue, $comments, $incidents, $logJson, $verticalSpeed, 
+        $points, $maintenanceCost, $airportFees, $fuelCost, $pilotPay
+    ]);
 
-    // Update Roster to Flown
+    // Update Roster Status
     $stmt = $pdo->prepare("UPDATE roster_assignments SET status = 'Flown' WHERE id = ?");
     $stmt->execute([$rosterId]);
 
     $pdo->commit();
 
-    echo json_encode(['status' => 'success', 'message' => 'PIREP received and filed via ACARS.']);
+    echo json_encode([
+        'status' => 'success', 
+        'message' => 'PIREP received and processed.',
+        'details' => [
+            'pax' => $paxCount,
+            'points' => $points,
+            'revenue' => number_format($revenue, 2),
+            'expenses' => number_format($fuelCost + $maintenanceCost + $airportFees, 2)
+        ]
+    ]);
 
 } catch (Exception $e) {
     $pdo->rollBack();

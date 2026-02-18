@@ -14,11 +14,22 @@ $monthRevenueStmt = $pdo->prepare("SELECT SUM(revenue) FROM flight_reports WHERE
 $monthRevenueStmt->execute([$month]);
 $monthRevenue = $monthRevenueStmt->fetchColumn() ?: 0;
 
-// Expenses (Fuel)
-// Assume Fuel Price $2.50 / kg
-$fuelPrice = 2.50;
-$totalFuel = $pdo->query("SELECT SUM(fuel_used) FROM flight_reports WHERE status='Approved'")->fetchColumn() ?: 0;
-$totalFuelCost = $totalFuel * $fuelPrice;
+// Expenses (Combined)
+$costsQuery = $pdo->query("SELECT 
+    SUM(fuel_cost) as fuel_total, 
+    SUM(maintenance_cost) as maint_total, 
+    SUM(airport_fees) as fees_total,
+    SUM(pilot_pay) as pilot_total,
+    SUM(fuel_used) as fuel_kg
+    FROM flight_reports WHERE status='Approved'")->fetch();
+
+$totalFuelCost = $costsQuery['fuel_total'] ?: 0;
+$totalMaintCost = $costsQuery['maint_total'] ?: 0;
+$totalFeesCost = $costsQuery['fees_total'] ?: 0;
+$totalPilotPay = $costsQuery['pilot_total'] ?: 0;
+$totalFuelKg = $costsQuery['fuel_kg'] ?: 0;
+
+$totalExpenses = $totalFuelCost + $totalMaintCost + $totalFeesCost + $totalPilotPay;
 
 // Pax
 $totalPax = $pdo->query("SELECT SUM(pax) FROM flight_reports WHERE status='Approved'")->fetchColumn() ?: 0;
@@ -28,8 +39,8 @@ $chartData = [];
 $months = [];
 for ($i = 5; $i >= 0; $i--) {
     $m = date('Y-m', strtotime("-$i months"));
-    $stmt = $pdo->prepare("SELECT SUM(revenue) as rev, SUM(fuel_used * ?) as cost FROM flight_reports WHERE status='Approved' AND DATE_FORMAT(submitted_at, '%Y-%m') = ?");
-    $stmt->execute([$fuelPrice, $m]);
+    $stmt = $pdo->prepare("SELECT SUM(revenue) as rev, SUM(fuel_cost + maintenance_cost + airport_fees + pilot_pay) as cost FROM flight_reports WHERE status='Approved' AND DATE_FORMAT(submitted_at, '%Y-%m') = ?");
+    $stmt->execute([$m]);
     $res = $stmt->fetch();
     
     $months[] = date('M/Y', strtotime($m . "-01"));
@@ -55,7 +66,7 @@ $topRoutes = $pdo->query("
 ")->fetchAll();
 
 // Calculate Profit
-$operatingProfit = $totalRevenue - $totalFuelCost;
+$operatingProfit = $totalRevenue - $totalExpenses;
 
 $pageTitle = "Financeiro - SkyCrew OS";
 $extraHead = '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>';
@@ -107,12 +118,12 @@ include '../includes/layout_header.php';
         <div class="glass-panel p-6 rounded-3xl border-l-4 border-amber-500">
             <div class="flex justify-between items-start">
                 <div>
-                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Combustível</p>
-                    <h3 class="text-2xl font-bold text-white mt-1"><?php echo number_format($totalFuel, 0, ',', '.'); ?> <span class="text-xs text-slate-500 font-normal">kg</span></h3>
-                    <p class="text-[10px] text-rose-500 font-bold mt-1 uppercase tracking-tighter">- <?php echo $sysSettings['currency_symbol'] ?? 'R$'; ?> <?php echo number_format($totalFuelCost, 2, ',', '.'); ?></p>
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Despesas Reais</p>
+                    <h3 class="text-2xl font-bold text-white mt-1"><?php echo $sysSettings['currency_symbol'] ?? 'R$'; ?> <?php echo number_format($totalExpenses, 2, ',', '.'); ?></h3>
+                    <p class="text-[10px] text-rose-500 font-bold mt-1 uppercase tracking-tighter">Fuel + Maint + Fees + Pay</p>
                 </div>
                 <div class="bg-amber-500/10 p-3 rounded-2xl text-amber-400">
-                    <i class="fas fa-gas-pump text-xl"></i>
+                    <i class="fas fa-hand-holding-usd text-xl"></i>
                 </div>
             </div>
         </div>
