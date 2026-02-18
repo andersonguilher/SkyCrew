@@ -14,9 +14,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name = trim($_POST['model_name']);
         $maxPax = intval($_POST['max_pax']);
         $speed = intval($_POST['cruise_speed'] ?? 450);
+        $maxFlight = floatval($_POST['max_flight_time'] ?? 0);
         try {
-            $stmt = $pdo->prepare("INSERT INTO aircraft_models (icao, model_name, max_pax, cruise_speed) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$icao, $name, $maxPax, $speed]);
+            $stmt = $pdo->prepare("INSERT INTO aircraft_models (icao, model_name, max_pax, cruise_speed, max_flight_time) VALUES (?, ?, ?, ?, ?)");
+            $stmt->execute([$icao, $name, $maxPax, $speed, $maxFlight]);
             $success = "Modelo $icao ($name) adicionado.";
         } catch (PDOException $e) {
             if (strpos($e->getMessage(), 'Duplicate') !== false) {
@@ -30,9 +31,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name = trim($_POST['model_name']);
         $maxPax = intval($_POST['max_pax']);
         $speed = intval($_POST['cruise_speed'] ?? 450);
+        $maxFlight = floatval($_POST['max_flight_time'] ?? 0);
         try {
-            $stmt = $pdo->prepare("UPDATE aircraft_models SET model_name = ?, max_pax = ?, cruise_speed = ? WHERE icao = ?");
-            $stmt->execute([$name, $maxPax, $speed, $icao]);
+            $stmt = $pdo->prepare("UPDATE aircraft_models SET model_name = ?, max_pax = ?, cruise_speed = ?, max_flight_time = ? WHERE icao = ?");
+            $stmt->execute([$name, $maxPax, $speed, $maxFlight, $icao]);
             $success = "Modelo $icao atualizado.";
         } catch (PDOException $e) {
             $error = "Erro: " . $e->getMessage();
@@ -112,26 +114,36 @@ include '../includes/layout_header.php';
     <div class="glass-panel p-6 rounded-3xl shrink-0">
         <h2 class="section-title"><i class="fas fa-drafting-compass text-indigo-400"></i> Novo Modelo</h2>
         <form method="POST" id="modelForm" class="space-y-4">
-            <div class="space-y-1">
-                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Tipo (ICAO)</label>
-                <input type="text" name="icao" id="add_icao" class="form-input uppercase opacity-70" placeholder="..." readonly required>
+            <div class="grid grid-cols-2 gap-4">
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Tipo (ICAO)</label>
+                    <div class="relative group cursor-pointer" onclick="openSyncModal()">
+                        <input type="text" name="icao" id="add_icao" class="form-input uppercase opacity-70 cursor-pointer pr-10" placeholder="Buscar..." readonly required>
+                        <div class="absolute right-3 top-1/2 -translate-y-1/2 text-indigo-400 group-hover:text-white transition-colors">
+                            <i class="fas fa-search text-xs"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Nome Completo</label>
+                    <input type="text" name="model_name" id="add_name" class="form-input opacity-70" placeholder="..." readonly required>
+                </div>
             </div>
-            <div class="space-y-1">
-                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Nome Completo</label>
-                <input type="text" name="model_name" id="add_name" class="form-input opacity-70" placeholder="..." readonly required>
+            <div class="grid grid-cols-3 gap-4">
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Max PAX</label>
+                    <input type="number" name="max_pax" id="add_pax" class="form-input text-xs" placeholder="189" required>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Veloc. (kt)</label>
+                    <input type="number" name="cruise_speed" id="add_speed" class="form-input text-xs" placeholder="450" required>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Auton. (h)</label>
+                    <input type="number" step="0.1" name="max_flight_time" id="add_endurance" class="form-input text-xs" placeholder="8.0" required>
+                </div>
             </div>
-            <div class="space-y-1">
-                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Max Passageiros</label>
-                <input type="number" name="max_pax" id="add_pax" class="form-input" placeholder="189" required>
-            </div>
-            <div class="space-y-1">
-                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Velocidade Cruzeiro (kt)</label>
-                <input type="number" name="cruise_speed" id="add_speed" class="form-input" placeholder="450" required>
-            </div>
-            <div class="pt-2 space-y-3">
-                <button type="button" onclick="openSyncModal()" class="w-full py-3 border-2 border-indigo-500/30 text-indigo-400 font-bold rounded-xl hover:bg-indigo-500/10 transition text-xs uppercase tracking-widest">
-                    <i class="fas fa-search mr-2"></i> Buscar SimBrief
-                </button>
+            <div class="pt-2">
                 <button type="submit" name="add_model" id="btnAdd" disabled class="w-full py-4 btn-glow opacity-50 cursor-not-allowed uppercase tracking-widest text-xs">
                     Adicionar Modelo
                 </button>
@@ -189,8 +201,11 @@ include '../includes/layout_header.php';
                 <?php echo $modelInfo['icao']; ?> — <?php echo $modelInfo['model_name']; ?>
             </h2>
             <p class="text-[10px] text-slate-500 uppercase tracking-widest ml-1">
-                <?php echo $modelInfo['max_pax']; ?> passageiros · <?php echo $modelInfo['cruise_speed']; ?> kt · <?php echo count($components); ?> componentes
+                <?php echo $modelInfo['max_pax']; ?> passageiros · <?php echo $modelInfo['cruise_speed']; ?> kt · <?php echo $modelInfo['max_flight_time']; ?>h Autonomia · <?php echo count($components); ?> componentes
             </p>
+            <button onclick='openEditModelModal("<?php echo $modelInfo["icao"]; ?>", "<?php echo addslashes($modelInfo["model_name"]); ?>", <?php echo $modelInfo["max_pax"]; ?>, <?php echo $modelInfo["cruise_speed"]; ?>, <?php echo $modelInfo["max_flight_time"]; ?>)' class="text-[9px] font-bold text-indigo-400/60 hover:text-indigo-400 mt-2 uppercase tracking-tighter">
+                <i class="fas fa-edit mr-1"></i> Editar Parâmetros do Modelo
+            </button>
         </div>
         <div class="text-right">
             <?php
@@ -310,6 +325,7 @@ include '../includes/layout_header.php';
                     <th class="px-6 py-4">Modelo</th>
                     <th class="px-6 py-4 text-right">Max PAX</th>
                     <th class="px-6 py-4 text-right">Cruzeiro</th>
+                    <th class="px-6 py-4 text-right">Autonomia</th>
                     <th class="px-6 py-4 text-right">Componentes</th>
                     <th class="px-6 py-4 text-right">Maint. Prev./FH</th>
                     <th class="px-6 py-4 text-right">Bilhete 1h</th>
@@ -333,6 +349,7 @@ include '../includes/layout_header.php';
                     <td class="px-6 py-4 text-slate-200"><?php echo htmlspecialchars($m['model_name']); ?></td>
                     <td class="px-6 py-4 text-right font-mono text-sky-400 font-bold"><?php echo $maxP; ?></td>
                     <td class="px-6 py-4 text-right font-mono text-slate-400"><?php echo $m['cruise_speed']; ?> kt</td>
+                    <td class="px-6 py-4 text-right font-mono text-amber-400 font-bold"><?php echo $m['max_flight_time']; ?>h</td>
                     <td class="px-6 py-4 text-right">
                         <?php if ($m['component_count'] > 0): ?>
                             <span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full text-[10px] font-bold">
@@ -353,12 +370,15 @@ include '../includes/layout_header.php';
                     </td>
                     <td class="px-6 py-4 text-right pr-8">
                         <div class="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <a href="?model=<?php echo $m['icao']; ?>" class="w-8 h-8 rounded-full bg-indigo-500/20 hover:bg-indigo-500 hover:text-white text-indigo-400 flex items-center justify-center transition-all">
+                            <button onclick='openEditModelModal("<?php echo $m["icao"]; ?>", "<?php echo addslashes($m["model_name"]); ?>", <?php echo $maxP; ?>, <?php echo $m["cruise_speed"]; ?>, <?php echo $m["max_flight_time"]; ?>)' class="w-8 h-8 rounded-full bg-amber-500/20 hover:bg-amber-500 hover:text-white text-amber-400 flex items-center justify-center transition-all" title="Editar Parâmetros">
+                                <i class="fas fa-edit text-xs"></i>
+                            </button>
+                            <a href="?model=<?php echo $m['icao']; ?>" class="w-8 h-8 rounded-full bg-indigo-500/20 hover:bg-indigo-500 hover:text-white text-indigo-400 flex items-center justify-center transition-all" title="Componentes (Manutenção)">
                                 <i class="fas fa-cogs text-xs"></i>
                             </a>
                             <form method="POST" onsubmit="return confirm('Excluir modelo <?php echo $m['icao']; ?> e todos os seus componentes?');" class="inline">
                                 <input type="hidden" name="icao" value="<?php echo $m['icao']; ?>">
-                                <button type="submit" name="delete_model" class="w-8 h-8 rounded-full bg-rose-500/20 hover:bg-rose-500 hover:text-white text-rose-400 flex items-center justify-center transition-all">
+                                <button type="submit" name="delete_model" class="w-8 h-8 rounded-full bg-rose-500/20 hover:bg-rose-500 hover:text-white text-rose-400 flex items-center justify-center transition-all" title="Excluir Modelo">
                                     <i class="fas fa-trash-alt text-xs"></i>
                                 </button>
                             </form>
@@ -475,12 +495,70 @@ include '../includes/layout_header.php';
         else if (icao.startsWith('B77')) pax = 440;
         document.getElementById('add_pax').value = pax;
         
+        // Set endurance defaults
+        let endur = 7.5;
+        if (icao === 'C208') endur = 6.5;
+        else if (icao === 'B738') endur = 7.0;
+        else if (icao === 'A320' || icao === 'A321') endur = 7.5;
+        else if (icao === 'A20N') endur = 8.0;
+        else if (icao === 'A333') endur = 14.0;
+        else if (icao === 'B77L') endur = 18.0;
+        document.getElementById('add_endurance').value = endur;
+        
         // Enable submit
         const btn = document.getElementById('btnAdd');
         btn.disabled = false;
         btn.classList.remove('opacity-50', 'cursor-not-allowed');
         closeSyncModal();
     }
+</script>
+
+<!-- Edit Model Modal -->
+<div id="editModelModal" class="fixed inset-0 bg-black/80 hidden z-[1000] flex items-center justify-center backdrop-blur-sm p-4">
+    <div class="glass-panel rounded-3xl w-full max-w-md flex flex-col overflow-hidden border border-white/20 shadow-2xl">
+        <div class="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
+            <h3 class="text-lg font-bold text-white flex items-center gap-2"><i class="fas fa-edit text-indigo-400"></i> Editar Parâmetros: <span id="edit_title_icao"></span></h3>
+            <button onclick="closeEditModelModal()" class="text-slate-400 hover:text-white text-2xl transition">&times;</button>
+        </div>
+        <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="icao" id="edit_icao">
+            <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Nome do Modelo</label>
+                <input type="text" name="model_name" id="edit_name" class="form-input" required>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Max PAX</label>
+                    <input type="number" name="max_pax" id="edit_pax" class="form-input" required>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Cruzeiro (kt)</label>
+                    <input type="number" name="cruise_speed" id="edit_speed" class="form-input" required>
+                </div>
+            </div>
+            <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Autonomia Máxima (Horas)</label>
+                <input type="number" step="0.1" name="max_flight_time" id="edit_endurance" class="form-input" required>
+            </div>
+            <div class="pt-4 flex gap-3">
+                <button type="button" onclick="closeEditModelModal()" class="flex-1 py-3 bg-white/5 text-slate-400 font-bold rounded-xl hover:bg-white/10 transition uppercase text-xs">Cancelar</button>
+                <button type="submit" name="update_model" class="flex-1 py-3 btn-glow text-white font-bold rounded-xl uppercase text-xs">Salvar Alterações</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    function openEditModelModal(icao, name, pax, speed, endur) { 
+        document.getElementById('edit_icao').value = icao;
+        document.getElementById('edit_title_icao').innerText = icao;
+        document.getElementById('edit_name').value = name;
+        document.getElementById('edit_pax').value = pax;
+        document.getElementById('edit_speed').value = speed;
+        document.getElementById('edit_endurance').value = endur;
+        document.getElementById('editModelModal').classList.remove('hidden'); 
+    }
+    function closeEditModelModal() { document.getElementById('editModelModal').classList.add('hidden'); }
 </script>
 
 <?php include '../includes/layout_footer.php'; ?>

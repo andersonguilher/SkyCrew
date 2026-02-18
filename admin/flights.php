@@ -270,9 +270,10 @@ $tableFlights = $mapFlights;
 $totalFlightsCount = count($flights);
 
 $fleet = $pdo->query("
-    SELECT f.*, 
+    SELECT f.*, am.max_flight_time,
     COALESCE((SELECT arr_icao FROM flights_master WHERE aircraft_id = f.id ORDER BY dep_time DESC LIMIT 1), f.current_icao) as last_location
     FROM fleet f 
+    LEFT JOIN aircraft_models am ON f.icao_code = am.icao
     ORDER BY f.icao_code, f.registration
 ")->fetchAll();
 
@@ -387,7 +388,7 @@ include '../includes/layout_header.php';
                 <select name="aircraft_id" id="ac" class="form-input <?php echo ($selected_ac) ? 'bg-white/5 opacity-60 pointer-events-none' : ''; ?>" required onchange="checkAvailability(true); calcTicketPrice();" <?php echo ($selected_ac) ? 'disabled' : ''; ?>>
                     <option value="">Selecione...</option>
                     <?php foreach ($fleet as $f): ?>
-                            <option value="<?php echo $f['id']; ?>" data-location="<?php echo $f['last_location']; ?>" data-icao="<?php echo $f['icao_code']; ?>" <?php echo ($selected_ac == $f['id']) ? 'selected' : ''; ?>>
+                            <option value="<?php echo $f['id']; ?>" data-location="<?php echo $f['last_location']; ?>" data-icao="<?php echo $f['icao_code']; ?>" data-endurance="<?php echo $f['max_flight_time']; ?>" <?php echo ($selected_ac == $f['id']) ? 'selected' : ''; ?>>
                                 <?php echo $f['registration']; ?> (<?php echo $f['icao_code']; ?>) - <?php echo $f['last_location']; ?>
                             </option>
                     <?php endforeach; ?>
@@ -1473,7 +1474,8 @@ include '../includes/layout_header.php';
 
     function calcArrTime() {
         const dep = document.getElementById('dep_time').value;
-        const durVal = document.getElementById('dur').value;
+        const durInput = document.getElementById('dur');
+        const durVal = durInput.value;
         
         if (dep && durVal !== "") {
             const dur = parseInt(durVal);
@@ -1482,6 +1484,13 @@ include '../includes/layout_header.php';
             document.getElementById('arr_time').value = `${String(Math.floor(t / 60) % 24).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
         } else {
             document.getElementById('arr_time').value = "";
+        }
+        
+        // Performance check for warning color
+        if (typeof perfLimit !== 'undefined' && perfLimit > 0 && parseInt(durVal) > perfLimit) {
+            durInput.classList.add('border-rose-500', 'text-rose-400');
+        } else {
+            durInput.classList.remove('border-rose-500', 'text-rose-400');
         }
     }
 
@@ -1493,6 +1502,15 @@ include '../includes/layout_header.php';
     function checkAvailability(isAcChange = false) {
         const acEl = document.getElementById('ac'), acId = acEl.value, depInput = document.getElementById('dep'), dep = depInput.value.trim().toUpperCase();
         const showAll = document.getElementById('show_all_ac').checked, statusEl = document.getElementById('ac_status'), schedEl = document.getElementById('ac_schedule'), schedList = document.getElementById('schedule_list');
+        
+        const icao = acEl.options[acEl.selectedIndex]?.getAttribute('data-icao');
+        const endurance = parseFloat(acEl.options[acEl.selectedIndex]?.getAttribute('data-endurance') || 0);
+        let perfLimit = 0; // Max Safe EET in minutes
+        if (endurance > 0) {
+            const enduranceMin = endurance * 60;
+            // Formula: (Endurance * 0.85) - 90 mins (Alternate + Reserve)
+            perfLimit = Math.floor((enduranceMin * 0.85) - 90);
+        }
         
         if (isAcChange && acId) {
             const loc = acEl.options[acEl.selectedIndex].getAttribute('data-location');
@@ -1513,22 +1531,26 @@ include '../includes/layout_header.php';
 
         if (acId) {
             fetch(`../api/get_ac_status.php?id=${acId}`).then(r => r.json()).then(data => {
-                statusEl.classList.remove('hidden'); statusEl.innerHTML = `<span class="text-indigo-400 font-bold uppercase tracking-tighter">Posição: ${data.current_location}</span>`;
+                const duration = parseInt(document.getElementById('dur').value) || 60;
+                statusEl.classList.remove('hidden'); 
+                let statusHtml = `<span class="text-indigo-400 font-bold uppercase tracking-tighter">Posição: ${data.current_location}</span>`;
+                if (perfLimit > 0) {
+                    const limH = Math.floor(perfLimit/60), limM = perfLimit%60;
+                    statusHtml += ` | <span class="${duration > perfLimit ? 'text-rose-500 animate-pulse' : 'text-amber-400'} font-bold uppercase tracking-tighter">Lim. Perf: ${limH}h${limM}m</span>`;
+                }
+                statusEl.innerHTML = statusHtml;
                 
                 // Auto-Zoom to current location or planned route
-                const dep = document.getElementById('dep').value.trim().toUpperCase();
-                const arr = document.getElementById('arr').value.trim().toUpperCase();
+                const dep_val = document.getElementById('dep').value.trim().toUpperCase();
+                const arr_val = document.getElementById('arr').value.trim().toUpperCase();
                 
-                if (dep && arr && airportCoordinates[dep] && airportCoordinates[arr]) {
-                    // Zoom to fit the planned route
-                    const bounds = L.latLngBounds([airportCoordinates[dep], airportCoordinates[arr]]);
+                if (dep_val && arr_val && airportCoordinates[dep_val] && airportCoordinates[arr_val]) {
+                    const bounds = L.latLngBounds([airportCoordinates[dep_val], airportCoordinates[arr_val]]);
                     map.flyToBounds(bounds, { padding: [100, 100], duration: 1.5 });
                 } else if (airportCoordinates[data.current_location]) {
-                    // Zoom to current aircraft location
                     map.flyTo(airportCoordinates[data.current_location], 7, { duration: 1.5 });
                 }
 
-                // Only show schedule if it's a manual change OR if dep_time is empty
                 const depTimeFilled = document.getElementById('dep_time').value !== "";
                 if (isAcChange || !depTimeFilled) {
                     schedEl.classList.remove('hidden');
@@ -1536,9 +1558,7 @@ include '../includes/layout_header.php';
                     schedEl.classList.add('hidden');
                 }
 
-
                 schedList.innerHTML = '';
-                const duration = parseInt(document.getElementById('dur').value) || 60;
                 const buffer = 40; // Turnaround buffer in minutes
 
                 const getSlotInfo = (startMin) => {
@@ -1565,6 +1585,9 @@ include '../includes/layout_header.php';
                     
                     // If max duration is less than current selected duration, it's NOT safe or very tight
                     if (maxDuration < duration) isSafe = false;
+
+                    // Performance Range Check (Max endurance reached)
+                    if (perfLimit > 0 && duration > perfLimit) isSafe = false;
                     
                     // Tight if: we have less than 60 mins of margin over the required duration
                     const margin = maxDuration - duration;
