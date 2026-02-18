@@ -47,7 +47,7 @@ if ($internalKey && isset($data['api_key']) && $data['api_key'] === $internalKey
 }
 
 // Fallback to Pilot Password (if provided)
-$stmt = $pdo->prepare("SELECT u.*, p.id as pilot_id, p.rank FROM users u JOIN pilots p ON u.id = p.user_id WHERE u.email = ?");
+$stmt = $pdo->prepare("SELECT u.*, p.*, p.id as pilot_id FROM users u JOIN pilots p ON u.id = p.user_id WHERE u.email = ?");
 $stmt->execute([$data['email']]);
 $user = $stmt->fetch();
 
