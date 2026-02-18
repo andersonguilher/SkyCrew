@@ -248,18 +248,110 @@ try {
     $stmt = $pdo->prepare("UPDATE roster_assignments SET status = 'Flown' WHERE id = ?");
     $stmt->execute([$rosterId]);
 
+    // 9. Aircraft Maintenance Tracking — accumulate hours per registration
+    $aircraftId = $flightInfo['aircraft_id'];
+    $maintenancePerformed = [];
+    $totalMaintenanceCharged = 0;
+
+    if ($aircraftId) {
+        // 9a. Accumulate total flight hours on the aircraft
+        $stmt = $pdo->prepare("UPDATE fleet SET total_flight_hours = total_flight_hours + ? WHERE id = ?");
+        $stmt->execute([round($flightTimeHours, 2), $aircraftId]);
+
+        // 9b. Increment hours_since_maintenance for all components of this aircraft
+        $stmt = $pdo->prepare("
+            UPDATE fleet_component_hours 
+            SET hours_since_maintenance = hours_since_maintenance + ? 
+            WHERE fleet_id = ?
+        ");
+        $stmt->execute([round($flightTimeHours, 2), $aircraftId]);
+
+        // 9c. Check if any component has reached its maintenance interval
+        $stmt = $pdo->prepare("
+            SELECT fch.id as fch_id, fch.hours_since_maintenance, 
+                   am.id as comp_id, am.component_name, am.interval_fh, am.cost_preventive
+            FROM fleet_component_hours fch
+            JOIN aircraft_maintenance am ON fch.maintenance_component_id = am.id
+            WHERE fch.fleet_id = ? AND fch.hours_since_maintenance >= am.interval_fh
+        ");
+        $stmt->execute([$aircraftId]);
+        $dueComponents = $stmt->fetchAll();
+
+        // Get aircraft total hours for the log
+        $stmtHours = $pdo->prepare("SELECT total_flight_hours FROM fleet WHERE id = ?");
+        $stmtHours->execute([$aircraftId]);
+        $currentTotalHours = (float)$stmtHours->fetchColumn();
+
+        foreach ($dueComponents as $comp) {
+            // 9d. Log the preventive maintenance
+            $stmtLog = $pdo->prepare("
+                INSERT INTO fleet_maintenance_log 
+                (fleet_id, maintenance_component_id, component_name, hours_at_maintenance, cost, maintenance_type)
+                VALUES (?, ?, ?, ?, ?, 'PREVENTIVE')
+            ");
+            $stmtLog->execute([
+                $aircraftId, 
+                $comp['comp_id'], 
+                $comp['component_name'], 
+                $currentTotalHours, 
+                $comp['cost_preventive']
+            ]);
+
+            // 9e. Reset the component hour counter
+            $stmtReset = $pdo->prepare("
+                UPDATE fleet_component_hours 
+                SET hours_since_maintenance = 0, last_maintenance_at = NOW() 
+                WHERE id = ?
+            ");
+            $stmtReset->execute([$comp['fch_id']]);
+
+            $totalMaintenanceCharged += (float)$comp['cost_preventive'];
+            $maintenancePerformed[] = [
+                'component' => $comp['component_name'],
+                'cost' => number_format($comp['cost_preventive'], 2),
+                'interval_fh' => $comp['interval_fh'],
+                'hours_accumulated' => number_format($comp['hours_since_maintenance'], 2)
+            ];
+        }
+
+        // 9f. If maintenance was performed, add cost to the flight report as extra maintenance expense
+        if ($totalMaintenanceCharged > 0) {
+            $reportId = $pdo->lastInsertId();
+            // We update the maintenance_cost field to include both the routine + preventive cost
+            $stmtUpdateReport = $pdo->prepare("
+                UPDATE flight_reports 
+                SET maintenance_cost = maintenance_cost + ?,
+                    comments = CONCAT(COALESCE(comments, ''), '\n[AUTO] Manutenção preventiva realizada: R$ ', ?)
+                WHERE roster_id = ? AND pilot_id = ?
+            ");
+            $stmtUpdateReport->execute([
+                $totalMaintenanceCharged,
+                number_format($totalMaintenanceCharged, 2, ',', '.'),
+                $rosterId,
+                $pilotId
+            ]);
+        }
+    }
+
     $pdo->commit();
+
+    $responseDetails = [
+        'pax' => $paxCount,
+        'points' => $points,
+        'new_rank' => $newRank,
+        'revenue' => number_format($revenue, 2),
+        'pilot_earnings' => number_format($pilotPay, 2)
+    ];
+
+    if (!empty($maintenancePerformed)) {
+        $responseDetails['maintenance_performed'] = $maintenancePerformed;
+        $responseDetails['total_maintenance_cost'] = number_format($totalMaintenanceCharged, 2);
+    }
 
     echo json_encode([
         'status' => 'success', 
         'message' => 'PIREP received and auto-validated.',
-        'details' => [
-            'pax' => $paxCount,
-            'points' => $points,
-            'new_rank' => $newRank,
-            'revenue' => number_format($revenue, 2),
-            'pilot_earnings' => number_format($pilotPay, 2)
-        ]
+        'details' => $responseDetails
     ]);
 
 } catch (Exception $e) {

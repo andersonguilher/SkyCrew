@@ -172,6 +172,7 @@ CREATE TABLE `fleet` (
   `fullname` varchar(100) NOT NULL,
   `cruise_speed` int NOT NULL,
   `current_icao` char(4) DEFAULT 'SBGR',
+  `total_flight_hours` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT 'Total de horas voadas pela aeronave',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `registration` (`registration`)
@@ -228,3 +229,30 @@ CREATE TABLE `flight_reports` (
   KEY `roster_id` (`roster_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+DROP TABLE IF EXISTS `fleet_component_hours`;
+CREATE TABLE `fleet_component_hours` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `fleet_id` int NOT NULL,
+  `maintenance_component_id` int NOT NULL,
+  `hours_since_maintenance` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT 'Horas desde última manutenção',
+  `last_maintenance_at` timestamp NULL COMMENT 'Data da última manutenção',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_fleet_comp` (`fleet_id`, `maintenance_component_id`),
+  CONSTRAINT `fk_fch_fleet` FOREIGN KEY (`fleet_id`) REFERENCES `fleet` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_fch_maint` FOREIGN KEY (`maintenance_component_id`) REFERENCES `aircraft_maintenance` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+DROP TABLE IF EXISTS `fleet_maintenance_log`;
+CREATE TABLE `fleet_maintenance_log` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `fleet_id` int NOT NULL,
+  `maintenance_component_id` int NOT NULL,
+  `component_name` varchar(100) NOT NULL,
+  `hours_at_maintenance` decimal(10,2) NOT NULL COMMENT 'Horas acumuladas quando a manutenção ocorreu',
+  `cost` decimal(15,2) NOT NULL COMMENT 'Custo cobrado (preventivo)',
+  `maintenance_type` enum('PREVENTIVE','CORRECTIVE') NOT NULL DEFAULT 'PREVENTIVE',
+  `performed_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  CONSTRAINT `fk_fml_fleet` FOREIGN KEY (`fleet_id`) REFERENCES `fleet` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_fml_maint` FOREIGN KEY (`maintenance_component_id`) REFERENCES `aircraft_maintenance` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
