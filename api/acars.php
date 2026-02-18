@@ -175,20 +175,19 @@ $points -= ($criticalErrors * 40);
 // Ensure points don't go below 0 for a flight (optional)
 $points = max(0, $points);
 
-// 6. Save Report
 try {
     $pdo->beginTransaction();
 
     $logJson = json_encode($data);
     $incidents = $criticalErrors > 0 ? "Critical flight errors detected!" : null;
-    $comments = "Auto-filing via Advanced ACARS Client";
+    $comments = "Auto-validated via Advanced ACARS Client";
 
     $stmt = $pdo->prepare("
         INSERT INTO flight_reports 
         (pilot_id, roster_id, flight_time, fuel_used, landing_rate, pax, revenue, 
          comments, incidents, status, log_json, vertical_speed_touchdown, 
          points, maintenance_cost, airport_fees, fuel_cost, pilot_pay) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Approved', ?, ?, ?, ?, ?, ?, ?)
     ");
     
     $stmt->execute([
@@ -197,7 +196,24 @@ try {
         $points, $maintenanceCost, $airportFees, $fuelCost, $pilotPay
     ]);
 
-    // Update Roster Status
+    // 7. Update Pilot Stats (Hours, Balance, Rank, Points)
+    $newHours = $user['total_hours'] + $flightTimeHours;
+    $newPoints = $user['points'] + $points;
+    $newBalance = $user['balance'] + $pilotPay;
+
+    // Check for Promotion
+    $nextRankStmt = $pdo->prepare("SELECT * FROM ranks WHERE min_hours <= ? ORDER BY min_hours DESC LIMIT 1");
+    $nextRankStmt->execute([$newHours]);
+    $newRankData = $nextRankStmt->fetch();
+    $newRank = $newRankData ? $newRankData['rank_name'] : $user['rank'];
+
+    $updatePilot = $pdo->prepare("UPDATE pilots SET total_hours = ?, balance = ?, `rank` = ?, points = ? WHERE id = ?");
+    $updatePilot->execute([$newHours, $newBalance, $newRank, $newPoints, $pilotId]);
+
+    // 8. Update Aircraft Position and Roster Status
+    $stmt = $pdo->prepare("UPDATE fleet f JOIN flights_master fm ON f.id = fm.aircraft_id SET f.current_icao = fm.arr_icao WHERE fm.id = ?");
+    $stmt->execute([$flightInfo['id']]);
+
     $stmt = $pdo->prepare("UPDATE roster_assignments SET status = 'Flown' WHERE id = ?");
     $stmt->execute([$rosterId]);
 
@@ -205,12 +221,13 @@ try {
 
     echo json_encode([
         'status' => 'success', 
-        'message' => 'PIREP received and processed.',
+        'message' => 'PIREP received and auto-validated.',
         'details' => [
             'pax' => $paxCount,
             'points' => $points,
+            'new_rank' => $newRank,
             'revenue' => number_format($revenue, 2),
-            'expenses' => number_format($fuelCost + $maintenanceCost + $airportFees, 2)
+            'pilot_earnings' => number_format($pilotPay, 2)
         ]
     ]);
 

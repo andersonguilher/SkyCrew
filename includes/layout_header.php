@@ -106,13 +106,9 @@ if (!$is_admin && isset($pdo)) {
                             <i class="fas fa-plane"></i>
                             <span class="nav-label">Frota</span>
                         </a>
-                        <a href="pilots.php" class="nav-button <?php echo $current_page == 'pilots.php' ? 'active' : ''; ?>" title="Pilotos">
-                            <i class="fas fa-users"></i>
-                            <span class="nav-label">Pilotos</span>
-                        </a>
-                        <a href="reports.php" class="nav-button <?php echo $current_page == 'reports.php' ? 'active' : ''; ?>" title="Relatórios">
-                            <i class="fas fa-file-signature"></i>
-                            <span class="nav-label">Relatórios</span>
+                        <a href="reports.php" class="nav-button <?php echo $current_page == 'reports.php' ? 'active' : ''; ?>" title="Logbook">
+                            <i class="fas fa-book"></i>
+                            <span class="nav-label">Logbook</span>
                         </a>
                         <a href="financials.php" class="nav-button <?php echo $current_page == 'financials.php' ? 'active' : ''; ?>" title="Financeiro">
                             <i class="fas fa-wallet"></i>
@@ -146,6 +142,10 @@ if (!$is_admin && isset($pdo)) {
                         <a href="paycheck.php" class="nav-button <?php echo $current_page == 'paycheck.php' ? 'active' : ''; ?>" title="Pagamentos">
                             <i class="fas fa-wallet"></i>
                             <span class="nav-label">Pagamentos</span>
+                        </a>
+                        <a href="logbook.php" class="nav-button <?php echo $current_page == 'logbook.php' ? 'active' : ''; ?>" title="Logbook">
+                            <i class="fas fa-book"></i>
+                            <span class="nav-label">Logbook</span>
                         </a>
                         <a href="preferences.php" class="nav-button group/prefs <?php echo $current_page == 'preferences.php' ? 'active' : ''; ?>" title="Preferências">
                             <div class="relative">
