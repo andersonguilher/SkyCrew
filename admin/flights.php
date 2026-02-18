@@ -108,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['add_flight'])) {
         $prefix = strtoupper($settings['va_callsign'] ?: 'VA');
         $rawNum = preg_replace('/\D/', '', $_POST['flight_number']);
-        $fnum = $prefix . $rawNum;
+        $fnumOut = $prefix . str_pad($rawNum, 4, '0', STR_PAD_LEFT);
         $dep = strtoupper(trim($_POST['dep_icao']));
         $arr = strtoupper(trim($_POST['arr_icao']));
         $dtime = $_POST['dep_time'];
@@ -131,24 +131,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Check for duplicates
         $check = $pdo->prepare("SELECT id FROM flights_master WHERE flight_number = ?");
-        $check->execute([$fnum]);
+        $check->execute([$fnumOut]);
 
         if ($check->rowCount() > 0) {
-            $error = "O voo $fnum já existe!";
+            $error = "O voo $fnumOut já existe!";
         } else {
             try {
-                $stmt = $pdo->prepare("INSERT INTO flights_master (flight_number, aircraft_id, dep_icao, arr_icao, dep_time, arr_time, aircraft_type, duration_minutes, route, estimated_fuel, passenger_count, max_pax, ticket_price, route_waypoints) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                $stmt->execute([$fnum, $aircraft_id, $dep, $arr, $dtime, $atime, $ac, $dur, $route, $fuel, $pax, $max_pax, $ticket_price, $waypoints]);
-                $success = "Voo $fnum adicionado com sucesso.";
+                // Get next pair_id
+                $maxPairId = (int)$pdo->query("SELECT COALESCE(MAX(pair_id), 0) FROM flights_master")->fetchColumn();
+                $pairId = $maxPairId + 1;
+
+                // Return flight number (next even number)
+                $retNum = intval($rawNum) + 1;
+                $fnumRet = $prefix . str_pad($retNum, 4, '0', STR_PAD_LEFT);
+
+                // Calculate return times
+                $retDepTime = $atime; // Return departs when outbound arrives
+                $depMin = intval(substr($atime, 0, 2)) * 60 + intval(substr($atime, 3, 2));
+                $arrMin = $depMin + intval($dur);
+                $retArrTime = sprintf('%02d:%02d', ($arrMin / 60) % 24, $arrMin % 60);
+
+                // Insert OUTBOUND
+                $stmt = $pdo->prepare("INSERT INTO flights_master (pair_id, flight_number, aircraft_id, dep_icao, arr_icao, dep_time, arr_time, aircraft_type, duration_minutes, route, estimated_fuel, passenger_count, max_pax, ticket_price, route_waypoints) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt->execute([$pairId, $fnumOut, $aircraft_id, $dep, $arr, $dtime, $atime, $ac, $dur, $route, $fuel, $pax, $max_pax, $ticket_price, $waypoints]);
+
+                // Insert RETURN (swapped dep/arr, same aircraft)
+                $stmt->execute([$pairId, $fnumRet, $aircraft_id, $arr, $dep, $retDepTime, $retArrTime, $ac, $dur, null, $fuel, $pax, $max_pax, $ticket_price, null]);
+
+                // Update fleet location to outbound departure
+                $pdo->prepare("UPDATE fleet SET current_icao = ? WHERE id = ?")->execute([$dep, $aircraft_id]);
+
+                $success = "Par de voos criado: $fnumOut ($dep→$arr) e $fnumRet ($arr→$dep)";
             } catch (PDOException $e) {
                 $error = "Erro ao salvar: " . $e->getMessage();
             }
         }
     } elseif (isset($_POST['delete_id'])) {
         try {
-            $stmt = $pdo->prepare("DELETE FROM flights_master WHERE id = ?");
-            $stmt->execute([$_POST['delete_id']]);
-            $success = "Voo excluído com sucesso.";
+            $delId = $_POST['delete_id'];
+            $pairStmt = $pdo->prepare("SELECT pair_id FROM flights_master WHERE id = ?");
+            $pairStmt->execute([$delId]);
+            $delPairId = $pairStmt->fetchColumn();
+            if ($delPairId) {
+                $pdo->prepare("DELETE FROM flights_master WHERE pair_id = ?")->execute([$delPairId]);
+                $success = "Par de voos (ida e volta) excluído com sucesso.";
+            } else {
+                $pdo->prepare("DELETE FROM flights_master WHERE id = ?")->execute([$delId]);
+                $success = "Voo excluído com sucesso.";
+            }
         } catch (PDOException $e) {
             $error = "Erro: " . $e->getMessage();
         }
@@ -194,7 +224,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Fetch Data Enriched for Map and List
 $flights = $pdo->query("
-    SELECT fm.*, fl.registration,
+    SELECT fm.*, fm.pair_id, fl.registration,
     a1.latitude_deg as dep_lat, a1.longitude_deg as dep_lon,
     a2.latitude_deg as arr_lat, a2.longitude_deg as arr_lon,
     (SELECT status FROM roster_assignments WHERE flight_id = fm.id ORDER BY assigned_at DESC LIMIT 1) as roster_status
@@ -202,7 +232,7 @@ $flights = $pdo->query("
     LEFT JOIN fleet fl ON fm.aircraft_id = fl.id 
     LEFT JOIN airports a1 ON fm.dep_icao = a1.ident
     LEFT JOIN airports a2 ON fm.arr_icao = a2.ident
-    ORDER BY fm.flight_number
+    ORDER BY fm.pair_id, fm.flight_number
 ")->fetchAll();
 
 // 1. Performance: By default, only load Accepted flights to keep map and DOM light
@@ -225,7 +255,7 @@ $fleet = $pdo->query("
 ")->fetchAll();
 
 $prefix = strtoupper($settings['va_callsign'] ?: 'VA');
-$maxNum = 1000;
+$maxNum = 0;
 foreach ($flights as $f) {
     if (preg_match('/^' . preg_quote($prefix, '/') . '(\d+)$/', $f['flight_number'], $matches)) {
         $num = intval($matches[1]);
@@ -233,7 +263,9 @@ foreach ($flights as $f) {
             $maxNum = $num;
     }
 }
+// Next outbound number is always odd
 $nextNum = $maxNum + 1;
+if ($nextNum % 2 === 0) $nextNum++; // Ensure odd (outbound)
 
 $pageTitle = "Painel de Voos - SkyCrew OS";
 $extraHead = '
@@ -322,7 +354,7 @@ include '../includes/layout_header.php';
         <form method="POST" id="dispatchForm" class="space-y-5">
             <div class="space-y-2">
                 <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Voo</label>
-                <input type="text" name="flight_number" value="<?php echo $passed_flight_number ?: ($prefix . $nextNum); ?>" class="form-input font-bold" required>
+                <input type="text" name="flight_number" value="<?php echo $passed_flight_number ?: ($prefix . str_pad($nextNum, 4, '0', STR_PAD_LEFT)); ?>" class="form-input font-bold" required>
             </div>
             <div class="space-y-2">
                 <div class="flex justify-between items-center"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Aeronave</label>

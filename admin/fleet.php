@@ -6,6 +6,8 @@ requireRole('admin');
 $success = '';
 $error = '';
 
+$settings = getSystemSettings($pdo);
+
 // Fetch available aircraft models for dropdown
 $models = $pdo->query("SELECT icao, model_name, cruise_speed FROM aircraft_models ORDER BY model_name")->fetchAll();
 
@@ -26,24 +28,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $stmt = $pdo->prepare("INSERT INTO fleet (icao_code, registration, fullname, cruise_speed, current_icao) VALUES (?, ?, ?, ?, ?)");
             $stmt->execute([$icao, $registration, $name, $speed, $current_icao]);
-            $success = "Aeronave $registration ($icao) adicionada com sucesso em $current_icao.";
+            $success = "Aeronave $registration ($icao) adicionada em $current_icao.";
         } catch (PDOException $e) {
             $error = "Erro: " . $e->getMessage();
         }
     } elseif (isset($_POST['delete_id'])) {
         try {
-            $stmt = $pdo->prepare("DELETE FROM fleet WHERE id = ?");
-            $stmt->execute([$_POST['delete_id']]);
-            $success = "Aeronave removida.";
+            // Check if aircraft is assigned to routes
+            $delId = $_POST['delete_id'];
+            $routeCheck = $pdo->prepare("SELECT COUNT(*) FROM flights_master WHERE aircraft_id = ?");
+            $routeCheck->execute([$delId]);
+            if ($routeCheck->fetchColumn() > 0) {
+                $error = "Não é possível remover: esta aeronave está atribuída a rotas ativas. Exclua os voos primeiro.";
+            } else {
+                $stmt = $pdo->prepare("DELETE FROM fleet WHERE id = ?");
+                $stmt->execute([$delId]);
+                $success = "Aeronave removida.";
+            }
         } catch (PDOException $e) {
             $error = "Erro: " . $e->getMessage();
         }
     }
 }
 
-// Fetch Fleet
-$fleet = $pdo->query("SELECT * FROM fleet ORDER BY icao_code")->fetchAll();
-$settings = getSystemSettings($pdo);
+// Fetch Fleet with route info
+$fleet = $pdo->query("
+    SELECT f.*, 
+           (SELECT COUNT(*) FROM flights_master fm WHERE fm.aircraft_id = f.id) as route_count,
+           (SELECT GROUP_CONCAT(DISTINCT CONCAT(fm.dep_icao, '→', fm.arr_icao) ORDER BY fm.flight_number SEPARATOR ', ') 
+            FROM flights_master fm WHERE fm.aircraft_id = f.id) as routes
+    FROM fleet f 
+    ORDER BY f.icao_code, f.registration
+")->fetchAll();
 
 $pageTitle = "Gerenciar Frota - SkyCrew OS";
 include '../includes/layout_header.php';
@@ -52,7 +68,7 @@ include '../includes/layout_header.php';
 <div class="sidebar-narrow flex flex-col gap-6">
     <div class="glass-panel p-6 rounded-3xl shrink-0">
         <h2 class="section-title"><i class="fas fa-plane-arrival text-indigo-400"></i> Nova Aeronave</h2>
-        <form method="POST" class="space-y-4">
+        <form method="POST" id="fleetForm" class="space-y-4">
             <div class="space-y-1">
                 <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Matrícula</label>
                 <div class="flex gap-2">
@@ -62,29 +78,32 @@ include '../includes/layout_header.php';
                     </button>
                 </div>
             </div>
-            <div class="space-y-1 relative">
-                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Localização (ICAO)</label>
-                <input type="text" name="current_icao" id="current_icao" class="form-input uppercase" placeholder="SBGR" maxlength="4" onkeyup="searchAirport(this)" autocomplete="off" required>
-                <div id="current_icao_list" class="absolute left-0 right-0 top-full mt-1 glass-panel rounded-xl overflow-hidden z-50 hidden border border-white/20 shadow-2xl bg-[#1e293b]"></div>
-            </div>
             <div class="space-y-1">
                 <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Modelo da Aeronave</label>
                 <select name="icao_code" id="add_icao" class="form-input" required onchange="onModelSelect(this)">
                     <option value="">Selecione o modelo...</option>
                     <?php foreach ($models as $m): ?>
                         <option value="<?php echo $m['icao']; ?>" data-name="<?php echo htmlspecialchars($m['model_name']); ?>" data-speed="<?php echo $m['cruise_speed']; ?>">
-                            <?php echo $m['icao']; ?> — <?php echo htmlspecialchars($m['model_name']); ?> (<?php echo $m['cruise_speed']; ?> kt)
+                            <?php echo $m['icao']; ?> — <?php echo htmlspecialchars($m['model_name']); ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
                 <?php if (empty($models)): ?>
                     <p class="text-[9px] text-rose-400 ml-1">
-                        <i class="fas fa-exclamation-circle mr-1"></i> Cadastre modelos em <a href="aircraft_models.php" class="text-indigo-400 hover:text-indigo-300 underline">Modelos</a> antes de adicionar aeronaves.
+                        <i class="fas fa-exclamation-circle mr-1"></i> Cadastre modelos em <a href="aircraft_models.php" class="text-indigo-400 hover:text-indigo-300 underline">Modelos</a>.
                     </p>
                 <?php endif; ?>
             </div>
+            <div class="space-y-1 relative">
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Localização (ICAO)</label>
+                <input type="text" name="current_icao" id="current_icao" class="form-input uppercase" placeholder="SBGR" maxlength="4" onkeyup="searchAirport(this)" autocomplete="off" required>
+                <div id="current_icao_list" class="absolute left-0 right-0 top-full mt-1 glass-panel rounded-xl overflow-hidden z-50 hidden border border-white/20 shadow-2xl bg-[#1e293b]"></div>
+                <div id="icao_hint" class="text-[9px] text-slate-500 ml-1 mt-1 hidden">
+                    <i class="fas fa-info-circle mr-1"></i> <span id="icao_hint_text"></span>
+                </div>
+            </div>
             <div class="space-y-1">
-                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Detalhes do Modelo</label>
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Detalhes</label>
                 <div id="model_info" class="bg-white/5 border border-white/10 rounded-xl p-3 text-[11px] text-slate-500 italic">
                     Selecione um modelo acima
                 </div>
@@ -121,34 +140,45 @@ include '../includes/layout_header.php';
         <table class="w-full text-left text-[12px]">
             <thead class="bg-white/5 sticky top-0 z-10">
                 <tr class="text-[10px] uppercase tracking-widest text-slate-500 font-bold">
-                    <th class="px-8 py-4">Matrícula</th>
-                    <th class="px-8 py-4">Tipo</th>
-                    <th class="px-8 py-4">Localização</th>
-                    <th class="px-8 py-4">Aeronave</th>
-                    <th class="px-8 py-4">Velocidade</th>
-                    <th class="px-8 py-4 text-right pr-12">Ação</th>
+                    <th class="px-6 py-4">Matrícula</th>
+                    <th class="px-6 py-4">Tipo</th>
+                    <th class="px-6 py-4">Base</th>
+                    <th class="px-6 py-4">Aeronave</th>
+                    <th class="px-6 py-4">Vel.</th>
+                    <th class="px-6 py-4">Rotas</th>
+                    <th class="px-6 py-4 text-right pr-8">Ação</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-white/5">
                 <?php foreach ($fleet as $ac): ?>
                     <tr class="hover:bg-white/5 transition group">
-                        <td class="px-8 py-4 font-mono font-bold text-indigo-400"><?php echo $ac['registration']; ?></td>
-                        <td class="px-8 py-4">
-                            <span class="bg-white/5 border border-white/10 px-2 py-1 rounded text-white font-bold">
+                        <td class="px-6 py-3 font-mono font-bold text-indigo-400"><?php echo $ac['registration']; ?></td>
+                        <td class="px-6 py-3">
+                            <span class="bg-white/5 border border-white/10 px-2 py-0.5 rounded text-white font-bold text-[11px]">
                                 <?php echo $ac['icao_code']; ?>
                             </span>
                         </td>
-                        <td class="px-8 py-4">
-                            <span class="bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded text-emerald-400 font-bold">
+                        <td class="px-6 py-3">
+                            <span class="bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded text-emerald-400 font-bold text-[11px]">
                                 <?php echo $ac['current_icao'] ?: '---'; ?>
                             </span>
                         </td>
-                        <td class="px-8 py-4 text-slate-200"><?php echo $ac['fullname']; ?></td>
-                        <td class="px-8 py-4 text-slate-400"><?php echo $ac['cruise_speed']; ?> kt</td>
-                        <td class="px-8 py-4 text-right pr-12">
-                            <form method="POST" onsubmit="return confirm('Excluir esta aeronave?');">
+                        <td class="px-6 py-3 text-slate-200 text-[11px]"><?php echo $ac['fullname']; ?></td>
+                        <td class="px-6 py-3 text-slate-400 text-[11px]"><?php echo $ac['cruise_speed']; ?> kt</td>
+                        <td class="px-6 py-3">
+                            <?php if ($ac['route_count'] > 0): ?>
+                                <div class="text-[10px] text-yellow-400 font-mono leading-relaxed max-w-xs truncate" title="<?php echo htmlspecialchars($ac['routes']); ?>">
+                                    <span class="bg-yellow-500/10 border border-yellow-500/20 px-1.5 py-0.5 rounded mr-1"><?php echo $ac['route_count']; ?></span>
+                                    <?php echo htmlspecialchars($ac['routes']); ?>
+                                </div>
+                            <?php else: ?>
+                                <span class="text-[10px] text-slate-600 italic">Sem rotas</span>
+                            <?php endif; ?>
+                        </td>
+                        <td class="px-6 py-3 text-right pr-8">
+                            <form method="POST" onsubmit="return confirm('<?php echo $ac['route_count'] > 0 ? 'Esta aeronave tem rotas ativas. Exclua os voos primeiro.' : 'Excluir esta aeronave?'; ?>');">
                                 <input type="hidden" name="delete_id" value="<?php echo $ac['id']; ?>">
-                                <button type="submit" class="text-slate-600 hover:text-rose-500 transition opacity-0 group-hover:opacity-100">
+                                <button type="submit" class="text-slate-600 hover:text-rose-500 transition opacity-0 group-hover:opacity-100 <?php echo $ac['route_count'] > 0 ? 'cursor-not-allowed' : ''; ?>">
                                     <i class="fas fa-trash-alt"></i>
                                 </button>
                             </form>
@@ -156,7 +186,7 @@ include '../includes/layout_header.php';
                     </tr>
                 <?php endforeach; ?>
                 <?php if (empty($fleet)): ?>
-                    <tr><td colspan="6" class="px-8 py-12 text-center text-slate-500 italic">Nenhuma aeronave cadastrada.</td></tr>
+                    <tr><td colspan="7" class="px-6 py-12 text-center text-slate-500 italic">Nenhuma aeronave cadastrada.</td></tr>
                 <?php endif; ?>
             </tbody>
         </table>
@@ -170,18 +200,22 @@ include '../includes/layout_header.php';
     function generateJSMatricula() {
         const prefixes = registrationPrefixes.map(p => p.trim());
         const prefix = prefixes[Math.floor(Math.random() * prefixes.length)] || 'PR';
-        const chars = "ABCDEFGHIJKLMNOPQRSTUVWYZ";
-        const r1 = chars[Math.floor(Math.random() * chars.length)];
-        const r2 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[Math.floor(Math.random() * 26)];
-        const r3 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[Math.floor(Math.random() * 26)];
-        return (prefix + "-" + r1 + r2 + r3).toUpperCase();
+        const num = String(Math.floor(Math.random() * 9000) + 1000); // 4 digit number
+        return (prefix + "-" + num).toUpperCase();
     }
 
     function refreshReg() { document.getElementById('add_reg').value = generateJSMatricula(); }
 
-    function onModelSelect(sel) {
+    // Auto-generate on load
+    refreshReg();
+
+    async function onModelSelect(sel) {
         const opt = sel.options[sel.selectedIndex];
         const info = document.getElementById('model_info');
+        const icaoInput = document.getElementById('current_icao');
+        const hint = document.getElementById('icao_hint');
+        const hintText = document.getElementById('icao_hint_text');
+        
         if (opt.value) {
             const name = opt.getAttribute('data-name');
             const speed = opt.getAttribute('data-speed');
@@ -193,8 +227,25 @@ include '../includes/layout_header.php';
                     <span class="text-slate-400">${speed} kt</span>
                 </div>
             `;
+            
+            // Fetch available locations for this model
+            try {
+                const res = await fetch(`../api/fleet_availability.php?action=locations_for&model=${opt.value}`);
+                const data = await res.json();
+                if (data.any_location) {
+                    hint.classList.remove('hidden');
+                    hintText.textContent = 'Modelo sem rotas — pode ser posicionada em qualquer ICAO';
+                    hintText.className = 'text-emerald-400';
+                } else if (data.locations.length > 0) {
+                    hint.classList.remove('hidden');
+                    hintText.innerHTML = 'Locais operacionais: <strong class="text-indigo-400">' + data.locations.join(', ') + '</strong>';
+                } else {
+                    hint.classList.add('hidden');
+                }
+            } catch(e) { hint.classList.add('hidden'); }
         } else {
             info.innerHTML = '<span class="italic text-slate-500">Selecione um modelo acima</span>';
+            hint.classList.add('hidden');
         }
     }
 
@@ -214,12 +265,37 @@ include '../includes/layout_header.php';
                             const d = document.createElement('div');
                             d.className = 'px-4 py-2 hover:bg-white/10 cursor-pointer text-[11px] text-slate-300 border-b border-white/5 last:border-0 transition';
                             d.textContent = x.label;
-                            d.onclick = () => { input.value = x.value; list.classList.add('hidden'); };
+                            d.onclick = () => { input.value = x.value; list.classList.add('hidden'); onIcaoSelected(x.value); };
                             list.appendChild(d);
                         });
                     } else list.classList.add('hidden');
                 });
         }, 300);
+    }
+
+    async function onIcaoSelected(icao) {
+        // Filter model dropdown based on ICAO
+        const modelSel = document.getElementById('add_icao');
+        try {
+            const res = await fetch(`../api/fleet_availability.php?action=models_at&icao=${icao}`);
+            const data = await res.json();
+            const availableModels = data.models.map(m => m.icao);
+            
+            // Highlight/filter available options
+            Array.from(modelSel.options).forEach(opt => {
+                if (opt.value === '') return; // skip placeholder
+                if (availableModels.includes(opt.value)) {
+                    opt.disabled = false;
+                    opt.style.opacity = '1';
+                } else {
+                    opt.disabled = true;
+                    opt.style.opacity = '0.3';
+                }
+            });
+        } catch(e) {
+            // On error, enable all options
+            Array.from(modelSel.options).forEach(opt => { opt.disabled = false; opt.style.opacity = '1'; });
+        }
     }
 
     // Close dropdown lists when clicking outside
