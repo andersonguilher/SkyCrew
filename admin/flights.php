@@ -297,62 +297,80 @@ $extraHead = '
     <style>
         #routeMap { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
         .leaflet-container { background: #0c0e17 !important; }
-        .leaflet-vignette { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; box-shadow: inset 0 0 150px rgba(0,0,0,0.8); }
-        .sidebar-panel { width: 380px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; }
-        .bottom-shelf { height: 260px; flex-shrink: 0; display: flex; flex-direction: column; margin-top: auto; transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
-        .bottom-shelf.minimized { height: 56px; }
-        .route-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; padding: 12px; transition: all 0.3s; }
-        .route-card:hover { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.2); }
-        .suggest-card { background: rgba(99, 102, 241, 0.1); border: 1px dashed #6366f1; border-radius: 12px; padding: 10px; text-align: center; cursor: pointer; transition: all 0.2s; }
-        .suggest-card:hover { background: rgba(99, 102, 241, 0.2); transform: scale(1.02); }
-        select.form-input option { background: #1e1b4b; color: white; }
+        .leaflet-vignette { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; background: radial-gradient(circle, transparent 40%, rgba(12, 14, 23, 0.7) 100%); }
+        .sidebar-panel { width: 380px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; margin-right: 10px; }
+        .bottom-shelf { height: 280px; flex-shrink: 0; display: flex; flex-direction: column; margin-top: auto; transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1); border-radius: 24px 24px 0 0; }
+        .bottom-shelf.minimized { height: 64px; }
+        
+        /* Modern Table Styles */
+        .premium-table thead th { background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(10px); color: #64748b; font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; padding: 16px 24px; }
+        .premium-table tbody tr { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .premium-table tbody tr:hover { background: rgba(99, 102, 241, 0.08) !important; }
+        .premium-table td { padding: 12px 24px; vertical-align: middle; }
+        
+        .status-pill { padding: 4px 8px; border-radius: 6px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+        .status-accepted { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); }
+        
+        .load-factor-bar { height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden; margin-top: 6px; }
+        .load-factor-inner { height: 100%; background: linear-gradient(90deg, #6366f1, #a855f7); border-radius: 2px; transition: width 1s cubic-bezier(0.34, 1.56, 0.64, 1); }
 
-        .sb-iframe-container {
-            background: #000;
-            position: relative;
-            border-radius: 0 0 24px 24px;
-            overflow: hidden;
-            height: 400px;
+        .glass-tooltip { background: rgba(15, 23, 42, 0.9) !important; border: 1px solid rgba(255, 255, 255, 0.1) !important; color: #f8fafc !important; font-weight: 700 !important; font-size: 11px !important; border-radius: 8px !important; backdrop-filter: blur(12px); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); padding: 6px 10px !important; }
+        .waypoint-tooltip { background: transparent !important; border: none !important; box-shadow: none !important; color: rgba(148, 163, 184, 0.8) !important; font-family: \'JetBrains Mono\', \'Monaco\', monospace !important; font-weight: 700 !important; font-size: 9px !important; text-shadow: 0 2px 4px rgba(0,0,0,0.5); padding: 0 !important; }
+        
+        .plane-node { display: flex; align-items: center; justify-content: center; pointer-events: none !important; z-index: 1000 !important; }
+        .plane-svg { transform: rotate(var(--plane-angle, 0deg)); transform-origin: center; filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.5)); transition: none !important; }
+        .plane-highlight { filter: drop-shadow(0 0 12px rgba(251, 191, 36, 0.8)) !important; }
+
+        .map-filters { position: absolute; top: 120px; right: 24px; z-index: 100; pointer-events: auto; width: 240px; gap: 10px; }
+        .filter-panel { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3); }
+        .filter-btn { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); color: #94a3b8; padding: 10px 16px; border-radius: 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.3s; width: 100%; text-align: left; display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+        .filter-btn:hover { background: rgba(99, 102, 241, 0.1); border-color: rgba(99, 102, 241, 0.3); color: #e2e8f0; }
+        .filter-btn.active { background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); border-color: transparent; color: white; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4); }
+        
+        /* Animation for table rows */
+        @keyframes fadeInRight {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
         }
-        #sbIframe { width: 100%; height: 100%; border: none; }
-        .glass-tooltip { background: rgba(12, 14, 23, 0.9) !important; border: 1px solid rgba(255, 255, 255, 0.2) !important; color: white !important; font-weight: bold !important; font-size: 11px !important; border-radius: 6px !important; backdrop-filter: blur(8px); box-shadow: 0 4px 15px rgba(0,0,0,0.6); pointer-events: none; }
-        .waypoint-tooltip { background: transparent !important; border: none !important; box-shadow: none !important; color: rgba(255, 255, 255, 0.9) !important; font-family: monospace !important; font-weight: bold !important; font-size: 10px !important; letter-spacing: 0.5px; text-shadow: 0 0 3px #000, 0 0 5px #000; padding: 0 !important; margin-top: -2px !important; }
-        .leaflet-tooltip-top:before { border-top-color: rgba(12, 14, 23, 0.9) !important; }
-        .waypoint-tooltip.leaflet-tooltip-top:before { display: none !important; }
-        .airport-node { cursor: pointer !important; pointer-events: auto !important; }
-        .leaflet-pane.leaflet-hubs-pane { pointer-events: none; }
-        .leaflet-pane.leaflet-hubs-pane path { pointer-events: auto; }
-
-        /* UI Event Passthrough Fix */
-        .page-container, .content-area { pointer-events: none; }
-        .top-bar, .sidebar-panel, .bottom-shelf, .glass-panel, input, button, select, textarea { pointer-events: auto; }
-
-        .plane-visible { /* Removed opacity override for JS control */ }
-        .plane-highlight { color: #fbbf24 !important; filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.6)) !important; scale: 1.15; z-index: 1000 !important; pointer-events: none !important; }
-        .plane-node { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; transition: scale 0.3s ease-out, filter 0.3s; pointer-events: none !important; }
-        .plane-svg { width: 100%; height: 100%; fill: currentColor; transform-origin: center; }
-        .leaflet-tile { transition: opacity 0.4s ease !important; }
-
-        /* Map Filters */
-        .map-filters { position: absolute; top: 130px; right: 20px; z-index: 100; pointer-events: auto; width: 220px; }
-        .filter-btn { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.1); color: #94a3b8; padding: 10px 14px; border-radius: 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.3s; width: 100%; text-align: left; display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-        .filter-btn:hover { background: rgba(99, 102, 241, 0.2); border-color: rgba(99, 102, 241, 0.4); color: white; }
-        .filter-btn.active { background: #6366f1; border-color: #6366f1; color: white; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3); }
-        .filter-btn.active i.fa-toggle-off { display: none; }
-        .filter-btn i.fa-toggle-on { display: none; }
-        .filter-btn.active i.fa-toggle-on { display: inline-block; }
+        .premium-table tbody tr { animation: fadeInRight 0.4s ease forwards; opacity: 0; }
+        .premium-table tbody tr:nth-child(1) { animation-delay: 0.05s; }
+        .premium-table tbody tr:nth-child(2) { animation-delay: 0.1s; }
+        .premium-table tbody tr:nth-child(3) { animation-delay: 0.15s; }
+        .premium-table tbody tr:nth-child(4) { animation-delay: 0.2s; }
     </style>
 ';
 
 $bgElement = '
     <div id="routeMap"></div>
     <div class="leaflet-vignette"></div>
-    <div class="map-filters flex flex-col gap-2">
-        <button id="toggleRoster" onclick="toggleMapMode(\'roster\')" class="filter-btn active"><span><i class="fas fa-check-circle mr-2"></i> Voos Aceitos</span> <i class="fas fa-toggle-on"></i><i class="fas fa-toggle-off"></i></button>
-        <button id="toggleAll" onclick="toggleMapMode(\'all\')" class="filter-btn"><span><i class="fas fa-globe mr-2"></i> Malha Completa</span> <i class="fas fa-toggle-on"></i><i class="fas fa-toggle-off"></i></button>
-        <div class="glass-panel p-3 rounded-2xl border-white/5 space-y-2">
-            <p class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Filtrar ICAO</p>
-            <input type="text" id="mapIcaoFilter" onkeyup="syncFilters(this, event)" placeholder="Ex: SBGR" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 uppercase">
+    <div class="map-filters flex flex-col">
+        <div class="filter-panel space-y-3">
+            <div class="flex flex-col gap-1.5">
+                <button id="toggleRoster" onclick="toggleMapMode(\'roster\')" class="filter-btn active">
+                    <span class="flex items-center gap-2"><i class="fas fa-check-circle text-[10px]"></i> Voos Aceitos</span>
+                    <i class="fas fa-toggle-on text-sm"></i>
+                </button>
+                <button id="toggleAll" onclick="toggleMapMode(\'all\')" class="filter-btn">
+                    <span class="flex items-center gap-2"><i class="fas fa-globe-americas text-[10px]"></i> Malha Completa</span>
+                    <i class="fas fa-toggle-off text-sm opacity-50"></i>
+                </button>
+            </div>
+            
+            <div class="h-px bg-white/10 mx-1"></div>
+            
+            <div class="space-y-2">
+                <p class="text-[9px] font-bold text-indigo-400 uppercase tracking-widest ml-1 flex items-center gap-2">
+                    <i class="fas fa-search"></i> Filtrar ICAO
+                </p>
+                <div class="relative">
+                    <input type="text" id="mapIcaoFilter" onkeyup="syncFilters(this, event)" placeholder="Ex: SBGR" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-[11px] text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 uppercase transition-all placeholder:text-slate-600">
+                    <div class="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] text-slate-500 font-bold bg-white/5 px-1.5 py-0.5 rounded border border-white/5">ESC</div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="active-flight-info" class="hidden filter-panel mt-3 animate-bounce-in">
+            <!-- Dynamic flight info shows here when a flight is selected -->
         </div>
     </div>';
 
@@ -465,62 +483,139 @@ include '../includes/layout_header.php';
         <?php if ($success): ?><div class="glass-panel border-l-4 border-emerald-500 px-6 py-3 rounded-2xl text-emerald-400 font-bold mb-2 animate-pulse"><i class="fas fa-check-circle mr-2"></i> <?php echo $success; ?></div><?php endif; ?>
         <?php if ($error): ?><div class="glass-panel border-l-4 border-rose-500 px-6 py-3 rounded-2xl text-rose-400 font-bold mb-2"><i class="fas fa-exclamation-triangle mr-2"></i> <?php echo $error; ?></div><?php endif; ?>
     </div>
-    <div id="malha-shelf" class="bottom-shelf glass-panel rounded-3xl overflow-hidden minimized">
-        <div class="p-4 border-b border-white/10 flex justify-between items-center shrink-0 cursor-pointer" onclick="toggleMalha(event)">
-            <div class="flex items-center gap-4">
-                <h3 class="text-white font-bold text-sm">Malha Operacional</h3>
-                <div id="flight-count-badge" class="bg-white/5 border border-white/10 rounded-full px-3 py-1 text-[10px] text-slate-400 font-bold"><?php echo count($tableFlights); ?> / <?php echo $totalFlightsCount; ?></div>
-                <?php if (!$showFullNetwork): ?>
-                    <a href="?full_network=1" class="bg-indigo-500/10 hover:bg-indigo-500/30 text-indigo-400 border border-indigo-500/20 px-3 py-1 rounded-full text-[10px] font-bold transition">
-                        <i class="fas fa-network-wired mr-1"></i> Carregar Malha Completa
+    <div id="malha-shelf" class="bottom-shelf glass-panel overflow-hidden minimized">
+        <div class="h-16 border-b border-white/10 flex justify-between items-center px-8 shrink-0 cursor-pointer hover:bg-white/[0.02] transition-colors" onclick="toggleMalha(event)">
+            <div class="flex items-center gap-6">
+                <div class="flex flex-col">
+                    <h3 class="text-white font-bold text-sm tracking-tight flex items-center gap-2">
+                        <i class="fas fa-network-wired text-indigo-400"></i> Malha Operacional
+                    </h3>
+                    <div id="flight-count-badge" class="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-0.5"><?php echo count($tableFlights); ?> / <?php echo $totalFlightsCount; ?> ATIVAS</div>
+                </div>
+                
+                <div class="h-8 w-px bg-white/10"></div>
+                
+                <div class="flex items-center gap-3">
+                    <?php if (!$showFullNetwork): ?>
+                        <a href="?full_network=1" class="group flex items-center gap-2 bg-indigo-500/10 hover:bg-indigo-500 text-indigo-400 hover:text-white border border-indigo-500/20 px-4 py-1.5 rounded-full text-[10px] font-bold transition-all shadow-lg hover:shadow-indigo-500/40">
+                            <i class="fas fa-cloud-download-alt group-hover:animate-bounce"></i> Carregar Malha Completa
+                        </a>
+                    <?php endif; ?>
+                    <a href="bulk_assign_aircraft.php" class="flex items-center gap-2 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 px-4 py-1.5 rounded-full text-[10px] font-bold transition-all" onclick="event.stopPropagation()">
+                        <i class="fas fa-layer-group"></i> Atribuição em Lote
                     </a>
-                <?php endif; ?>
-                <a href="bulk_assign_aircraft.php" class="bg-indigo-500/20 hover:bg-indigo-500 text-indigo-400 hover:text-white border border-indigo-500/30 px-3 py-1 rounded-full text-[10px] font-bold transition flex items-center gap-1" onclick="event.stopPropagation()">
-                    <i class="fas fa-magic"></i> Atribuição em Lote
-                </a>
-                <i id="malha-icon" class="fas fa-chevron-up text-xs text-slate-500 transition-transform duration-300"></i>
+                </div>
             </div>
-            <div class="relative w-64"><i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i><input type="text" id="flightSearch" onkeyup="syncFilters(this, event)" placeholder="Busca rápida..." class="w-full bg-white/5 border border-white/10 rounded-full pl-9 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"></div>
+
+            <div class="flex items-center gap-4">
+                <div class="relative w-72">
+                    <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+                    <input type="text" id="flightSearch" onkeyup="syncFilters(this, event)" placeholder="Buscar por voo ou ICAO..." class="w-full bg-white/5 border border-white/10 rounded-full pl-10 pr-4 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all">
+                </div>
+                <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-slate-500 hover:text-white transition-colors">
+                    <i id="malha-icon" class="fas fa-chevron-up text-xs transition-transform duration-500"></i>
+                </div>
+            </div>
         </div>
+        
         <div class="flex-1 overflow-y-auto">
-            <table id="malha-table" class="w-full text-left text-[11px] text-slate-300">
-                <thead class="bg-white/2 sticky top-0 z-20 text-[9px] uppercase tracking-widest font-bold text-slate-500 bg-[#0c0e17]">
-                    <tr><th class="px-6 py-3">Número</th><th class="px-6 py-3 text-center">Trecho</th><th class="px-6 py-3">Rota</th><th class="px-6 py-3">UTC Window</th><th class="px-6 py-3">Dados (Pax/Fuel)</th><th class="px-6 py-3">Equipamento</th><th class="px-6 py-3">EET</th><th class="px-6 py-3 text-right pr-8">Ação</th></tr>
+            <table id="malha-table" class="premium-table w-full text-left">
+                <thead>
+                    <tr>
+                        <th class="rounded-tl-2xl">Flight</th>
+                        <th class="text-center">Route</th>
+                        <th>Schedule</th>
+                        <th>Fleet / Type</th>
+                        <th>Payload Control</th>
+                        <th class="text-right rounded-tr-2xl">Operations</th>
+                    </tr>
                 </thead>
-                <tbody class="divide-y divide-white/5">
-                    <?php foreach ($tableFlights as $f): ?>
-                            <tr class="hover:bg-white/5 transition group cursor-pointer border-l-2 border-transparent" 
-                                data-status="<?php echo $f['roster_status']; ?>"
-                                onclick="selectFlight(this, '<?php echo $f['flight_number']; ?>')" 
-                                ondblclick="focusFlight(this, '<?php echo $f['flight_number']; ?>')">
-                                <td class="px-6 py-3 font-bold text-indigo-400"><?php echo $f['flight_number']; ?></td>
-                                <td class="px-6 py-3 text-center"><div class="flex items-center justify-center gap-2"><span><?php echo $f['dep_icao']; ?></span><i class="fas fa-arrow-right text-[10px] text-slate-600"></i><span><?php echo $f['arr_icao']; ?></span></div></td>
-                                <td class="px-6 py-3 font-mono text-[9px] text-slate-400 max-w-[150px] truncate" title="<?php echo htmlspecialchars($f['route']); ?>"><?php echo htmlspecialchars($f['route'] ?: '--'); ?></td>
-                                <td class="px-6 py-3 font-mono"><?php echo substr($f['dep_time'], 0, 5); ?> - <?php echo substr($f['arr_time'], 0, 5); ?></td>
-                                <td class="px-6 py-3">
-                                    <div class="flex flex-col text-[10px]">
-                                        <span class="text-slate-200"><i class="fas fa-users text-slate-500 mr-1 w-4"></i> <?php echo $f['passenger_count']; ?> / <?php echo $f['max_pax']; ?></span>
-                                        <span class="text-emerald-400 font-bold"><i class="fas fa-ticket-alt text-slate-500 mr-1 w-4"></i> R$ <?php echo number_format($f['ticket_price'], 2); ?></span>
-                                        <span class="text-slate-400 mt-1"><i class="fas fa-gas-pump text-slate-500 mr-1 w-4"></i> <?php echo number_format($f['estimated_fuel']); ?> kg</span>
+                <tbody class="divide-y divide-white/[0.03]">
+                    <?php foreach ($tableFlights as $f): 
+                        $paxPct = ($f['max_pax'] > 0) ? round(($f['passenger_count'] / $f['max_pax']) * 100) : 0;
+                        $trClass = $f['roster_status'] === 'Accepted' ? 'border-l-4 border-emerald-500/50' : 'border-l-4 border-transparent';
+                    ?>
+                        <tr class="group cursor-pointer <?php echo $trClass; ?>" 
+                            data-status="<?php echo $f['roster_status']; ?>"
+                            onclick="selectFlight(this, '<?php echo $f['flight_number']; ?>')" 
+                            ondblclick="focusFlight(this, '<?php echo $f['flight_number']; ?>')">
+                            
+                            <td class="font-bold">
+                                <span class="text-xs text-white"><?php echo $f['flight_number']; ?></span>
+                                <div class="text-[9px] text-indigo-400 uppercase tracking-widest mt-0.5">Commercial</div>
+                            </td>
+                            
+                            <td class="text-center">
+                                <div class="flex items-center justify-center gap-3">
+                                    <div class="flex flex-col items-center">
+                                        <span class="text-sm font-bold text-white"><?php echo $f['dep_icao']; ?></span>
                                     </div>
-                                </td>
-                                <td class="px-6 py-3 flex flex-col"><span class="font-bold text-slate-200"><?php echo $f['registration'] ?: '--'; ?></span><span class="text-[9px] text-slate-500 uppercase"><?php echo $f['aircraft_type']; ?></span></td>
-                                <td class="px-6 py-3"><?php echo intval($f['duration_minutes'] / 60) . 'h ' . ($f['duration_minutes'] % 60) . 'm'; ?></td>
-                                <td class="px-6 py-3 text-right pr-8">
-                                    <div class="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <a href="?edit_id=<?php echo $f['id']; ?>" class="w-8 h-8 rounded-full bg-indigo-500/20 hover:bg-indigo-500 hover:text-white text-indigo-400 flex items-center justify-center transition-all"><i class="fas fa-edit text-xs"></i></a>
-                                        <form method="POST" onsubmit="return confirm('Excluir?');" class="inline">
-                                            <input type="hidden" name="delete_id" value="<?php echo $f['id']; ?>">
-                                            <button type="submit" class="w-8 h-8 rounded-full bg-rose-500/20 hover:bg-rose-500 hover:text-white text-rose-400 flex items-center justify-center transition-all"><i class="fas fa-trash-alt text-xs"></i></button>
-                                        </form>
+                                    <div class="flex flex-col items-center gap-1">
+                                        <i class="fas fa-plane text-[10px] text-slate-600 transition-transform group-hover:translate-x-1"></i>
+                                        <span class="text-[8px] text-slate-500 font-mono"><?php echo intval($f['duration_minutes'] / 60) . 'h' . ($f['duration_minutes'] % 60) . 'm'; ?></span>
                                     </div>
-                                </td>
-                            </tr>
+                                    <div class="flex flex-col items-center">
+                                        <span class="text-sm font-bold text-white"><?php echo $f['arr_icao']; ?></span>
+                                    </div>
+                                </div>
+                            </td>
+                            
+                            <td>
+                                <div class="flex flex-col font-mono text-[11px]">
+                                    <span class="text-slate-200"><?php echo substr($f['dep_time'], 0, 5); ?> <i class="fas fa-caret-right mx-1 text-slate-600"></i> <?php echo substr($f['arr_time'], 0, 5); ?></span>
+                                    <span class="text-[9px] text-slate-500 uppercase font-sans mt-0.5">ZULU WINDOW</span>
+                                </div>
+                            </td>
+                            
+                            <td>
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-400 border border-indigo-500/20">
+                                        <i class="fas fa-plane-arrival text-xs"></i>
+                                    </div>
+                                    <div class="flex flex-col">
+                                        <span class="text-xs font-bold text-slate-200"><?php echo $f['registration'] ?: '--'; ?></span>
+                                        <span class="text-[9px] text-slate-500 uppercase tracking-wider"><?php echo $f['aircraft_type']; ?></span>
+                                    </div>
+                                </div>
+                            </td>
+                            
+                            <td class="w-56">
+                                <div class="flex flex-col">
+                                    <div class="flex justify-between items-end mb-1">
+                                        <span class="text-[10px] font-bold text-slate-300"><?php echo $f['passenger_count']; ?> PAX <span class="text-slate-600">/ <?php echo $f['max_pax']; ?></span></span>
+                                        <span class="text-[10px] font-bold text-indigo-400"><?php echo $paxPct; ?>%</span>
+                                    </div>
+                                    <div class="load-factor-bar">
+                                        <div class="load-factor-inner" style="width: <?php echo $paxPct; ?>%"></div>
+                                    </div>
+                                    <div class="flex items-center gap-3 mt-2">
+                                        <span class="text-[9px] font-mono text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded"><i class="fas fa-gas-pump mr-1"></i><?php echo number_format($f['estimated_fuel']); ?> KG</span>
+                                        <span class="text-[9px] font-mono text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded"><i class="fas fa-dollar-sign mr-1"></i><?php echo number_format($f['ticket_price'], 0); ?></span>
+                                    </div>
+                                </div>
+                            </td>
+                            
+                            <td class="text-right">
+                                <div class="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
+                                    <a href="?edit_id=<?php echo $f['id']; ?>" class="w-9 h-9 rounded-xl bg-white/5 hover:bg-indigo-500 text-slate-400 hover:text-white flex items-center justify-center transition-all border border-white/10 hover:border-indigo-400 shadow-xl" title="Editar Voo">
+                                        <i class="fas fa-edit text-xs"></i>
+                                    </a>
+                                    <form method="POST" onsubmit="return confirm('Excluir este voo?');" class="inline">
+                                        <input type="hidden" name="delete_id" value="<?php echo $f['id']; ?>">
+                                        <button type="submit" class="w-9 h-9 rounded-xl bg-white/5 hover:bg-rose-500 text-slate-400 hover:text-white flex items-center justify-center transition-all border border-white/10 hover:border-rose-400 shadow-xl" title="Excluir Voo">
+                                            <i class="fas fa-trash-alt text-xs"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
     </div>
+</div>
+
 </div>
 
 <script src="../SimBrief_APIv1/simbrief.apiv1.js"></script>
@@ -869,7 +964,10 @@ include '../includes/layout_header.php';
 
         // Update Dynamic Badge
         const badge = document.getElementById('flight-count-badge');
-        if (badge) badge.textContent = `${visibleCount} ATIVAS`;
+        if (badge) {
+            const total = <?php echo $totalFlightsCount; ?>;
+            badge.textContent = `${visibleCount} / ${total} ATIVAS`;
+        }
 
         // 2. Debounce Map Refresh (Heavier)
         clearTimeout(debounceTimer);
@@ -1055,57 +1153,75 @@ include '../includes/layout_header.php';
 
     function selectFlight(row, fnum) {
         if (isAnimating) return;
-        
-        // Prevent clicking buttons from triggering row selection (basic check)
-        if (event.target.closest('a') || event.target.closest('button')) return;
+        if (event && (event.target.closest('a') || event.target.closest('button'))) return;
 
-        // If deselecting current
+        const infoPanel = document.getElementById('active-flight-info');
+
         if (selectedFlight === fnum) {
             resetRoute(fnum, true, true);
-            row.classList.remove('bg-white/10', 'border-indigo-500');
-            row.classList.add('border-transparent');
+            row.classList.remove('bg-indigo-500/10', 'border-indigo-500');
             selectedFlight = null;
             selectedRow = null;
-            
-            // Reset Zoom to Global View
+            infoPanel.classList.add('hidden');
             fitMapToRoutes();
             return;
         }
 
-        // If changing selection
         if (selectedFlight) {
             resetRoute(selectedFlight, true, true);
-            if (selectedRow) {
-                selectedRow.classList.remove('bg-white/10', 'border-indigo-500');
-                selectedRow.classList.add('border-transparent');
-            }
+            if (selectedRow) selectedRow.classList.remove('bg-indigo-500/10', 'border-indigo-500');
         }
 
-        // Select new
         selectedFlight = fnum;
         selectedRow = row;
-        row.classList.remove('border-transparent');
-        row.classList.add('bg-white/10', 'border-indigo-500');
+        row.classList.add('bg-indigo-500/10', 'border-indigo-500');
         
-        // Highlight with Detailed Path (White)
-        highlightRoute(fnum, true, '#ffffff', true);
+        // Highlight route line and markers immediately, but don't start aircraft yet
+        highlightRoute(fnum, true, '#ffffff', true, false);
 
-        // Auto-Zoom to Route
         const obj = mapObjects[fnum];
         if (obj) {
+            // Update Info Panel
+            infoPanel.innerHTML = `
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-[10px] font-bold text-white tracking-widest uppercase">${fnum}</span>
+                    <span class="status-pill status-accepted">Ativo</span>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="flex flex-col">
+                        <span class="text-[9px] text-slate-500 font-bold uppercase tracking-tighter">Departure</span>
+                        <span class="text-sm font-bold text-slate-200">${obj.dep_icao}</span>
+                        <span class="text-[9px] font-mono text-slate-500">${obj.dep_time}Z</span>
+                    </div>
+                    <div class="flex flex-col text-right">
+                        <span class="text-[9px] text-slate-500 font-bold uppercase tracking-tighter">Arrival</span>
+                        <span class="text-sm font-bold text-slate-200">${obj.arr_icao}</span>
+                        <span class="text-[9px] font-mono text-slate-500">${obj.arr_time}Z</span>
+                    </div>
+                </div>
+                <div class="mt-3 pt-3 border-t border-white/5 flex items-center justify-between">
+                     <span class="text-[9px] text-slate-400 font-bold uppercase tracking-widest"><i class="fas fa-plane mr-1 text-indigo-400"></i> ${obj.roster_status || 'Enroute'}</span>
+                     <button onclick="focusFlight(null, '${fnum}')" class="text-[9px] text-indigo-400 hover:text-white font-bold uppercase tracking-widest transition-colors">Centrar Mapa</button>
+                </div>
+            `;
+            infoPanel.classList.remove('hidden');
+
             const path = obj.detailedPath || obj.directPath;
             const bounds = L.latLngBounds(path);
-            bounds.extend(obj.p1);
-            bounds.extend(obj.p2);
-            
             const shelf = document.getElementById('malha-shelf');
             const isMinimized = shelf.classList.contains('minimized');
             
+            // Wait for map movement to finish before inserting/animating the aircraft
+            map.once('moveend', () => {
+                if (selectedFlight === fnum) {
+                    highlightRoute(fnum, true, '#ffffff', true, true);
+                }
+            });
+
             map.flyToBounds(bounds, {
                 paddingTopLeft: [420, 100],
-                paddingBottomRight: [60, isMinimized ? 120 : 320],
-                duration: 1.5,
-                easeLinearity: 0.1
+                paddingBottomRight: [60, isMinimized ? 100 : 320],
+                duration: 1.5
             });
         }
     }
@@ -1142,7 +1258,7 @@ include '../includes/layout_header.php';
          }
     }
 
-    function highlightRoute(fnum, updateMarkers = true, color = '#06b6d4', useDetailed = false) {
+    function highlightRoute(fnum, updateMarkers = true, color = '#06b6d4', useDetailed = false, startPlaneAnim = true) {
         if (isAnimating) return;
         
         // Cancel any pending reset for this flight
@@ -1161,40 +1277,58 @@ include '../includes/layout_header.php';
             obj.line.bringToFront();
             
             // Activate Plane Animation & Create Marker if needed
-            if (!obj.active) {
+            if (!obj.active && startPlaneAnim) {
                 obj.active = true;
+                obj.progress = 0; // Ensure it starts from 0
                 activeFlights.add(fnum);
-                if (obj.progress < 0.05) obj.progress = 0.05; 
             }
 
-            if (!obj.plane) {
-                const dy = obj.p2[0] - obj.p1[0];
-                const dx = obj.p2[1] - obj.p1[1];
-                let angle = (Math.atan2(dx, dy) * 180 / Math.PI); 
+            if (!obj.plane && startPlaneAnim) {
+                // Use the starting point of the current path for precise alignment
+                const currentPath = obj.line.getLatLngs();
+                const startPt = Array.isArray(currentPath) ? (currentPath[0].lat ? currentPath[0] : L.latLng(currentPath[0])) : L.latLng(obj.p1);
+                
+                // Calculate initial angle towards the next point in the path or destination
+                let targetPt = obj.p2;
+                if (Array.isArray(currentPath) && currentPath.length > 1) {
+                    targetPt = currentPath[1].lat ? currentPath[1] : L.latLng(currentPath[1]);
+                }
+                
+                const p1_p = map.latLngToLayerPoint(startPt);
+                const p2_p = map.latLngToLayerPoint(targetPt);
+                const angle = (Math.atan2(p2_p.x - p1_p.x, -(p2_p.y - p1_p.y)) * 180 / Math.PI);
 
                 const planeIcon = L.divIcon({
                     className: 'plane-node',
-                    html: `<svg class="plane-svg plane-icon" viewBox="0 0 24 24" style="transform: rotate(${angle}deg);"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>`,
-                    iconSize: [24, 24],
-                    iconAnchor: [12, 12] 
+                    html: `
+                        <div class="relative w-8 h-8 flex items-center justify-center">
+                            <svg class="plane-svg plane-icon w-6 h-6" viewBox="0 0 24 24" style="--plane-angle: ${angle}deg; fill: #6366f1;">
+                                <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                            </svg>
+                        </div>
+                    `,
+                    iconSize: [32, 32],
+                    iconAnchor: [16, 16] 
                 });
-                obj.plane = L.marker(obj.p1, { icon: planeIcon, pane: 'planes', interactive: false, opacity: 0 }).addTo(routeLayerGroup);
+                obj.plane = L.marker(startPt, { icon: planeIcon, pane: 'planes', interactive: false, opacity: 0 }).addTo(routeLayerGroup);
             }
             
             // Ensure plane is visible immediately if highlighted
-            obj.plane.setOpacity(1); 
-            
-            const el = obj.plane.getElement();
-            if (el) {
-                obj.plane.setZIndexOffset(1000); 
-                const icon = el.querySelector('.plane-icon');
-                if (icon) {
-                    icon.classList.add('plane-highlight');
-                    // Force white color if using detailed route
-                    if (useDetailed) {
-                        icon.style.filter = "contrast(0) brightness(2)"; 
-                    } else {
-                        icon.style.filter = ""; 
+            if (obj.plane) {
+                obj.plane.setOpacity(1); 
+                
+                const el = obj.plane.getElement();
+                if (el) {
+                    obj.plane.setZIndexOffset(1000); 
+                    const icon = el.querySelector('.plane-icon');
+                    if (icon) {
+                        icon.classList.add('plane-highlight');
+                        // Force white color if using detailed route
+                        if (useDetailed) {
+                            icon.style.filter = "contrast(0) brightness(2) drop-shadow(0 0 12px rgba(255,255,255,0.4))"; 
+                        } else {
+                            icon.style.filter = ""; 
+                        }
                     }
                 }
             }
@@ -1351,18 +1485,20 @@ include '../includes/layout_header.php';
         try {
             activeFlights.forEach(fnum => {
                 const obj = mapObjects[fnum];
-                if (obj && obj.plane && obj.active) {
+                if (obj.plane && obj.active) {
                     obj.progress += obj.speed;
-                    if (obj.progress >= 1) obj.progress = 0;
+                    
+                    // Clamp progress to ensure it hits exactly 1.0 in the last frame
+                    const isLastFrame = obj.progress >= 1;
+                    if (isLastFrame) obj.progress = 1;
                     
                     const currentPath = obj.line.getLatLngs(); 
+                    let pos, angle;
 
                     if (Array.isArray(currentPath) && currentPath.length > 2) {
                         const pt = getPointAtLength(currentPath, obj.progress);
-                        obj.plane.setLatLng([pt.lat, pt.lng]);
-                        const el = obj.plane.getElement()?.querySelector('.plane-svg');
-                        if (el) el.style.transform = `rotate(${pt.angle}deg)`;
-                        
+                        pos = [pt.lat, pt.lng];
+                        angle = pt.angle;
                     } else {
                         const p1_p = map.latLngToLayerPoint(obj.p1);
                         const p2_p = map.latLngToLayerPoint(obj.p2);
@@ -1371,21 +1507,53 @@ include '../includes/layout_header.php';
                             p1_p.y + (p2_p.y - p1_p.y) * obj.progress
                         );
                         const pt = map.layerPointToLatLng(p_p);
-                        obj.plane.setLatLng(pt);
-                        
-                        const angle = (Math.atan2(p2_p.x - p1_p.x, -(p2_p.y - p1_p.y)) * 180 / Math.PI);
-                        const el = obj.plane.getElement()?.querySelector('.plane-svg');
-                        if (el) el.style.transform = `rotate(${angle}deg)`;
+                        pos = pt;
+                        angle = (Math.atan2(p2_p.x - p1_p.x, -(p2_p.y - p1_p.y)) * 180 / Math.PI);
                     }
 
-                    // Fade In / Out Logic
-                    let op = 1;
-                    const isSelected = (selectedFlight === fnum);
-                    if (!isSelected) {
-                        if (obj.progress < 0.15) op = obj.progress / 0.15;
-                        else if (obj.progress > 0.85) op = (1 - obj.progress) / 0.15;
+                    obj.plane.setLatLng(pos);
+                    const el = obj.plane.getElement()?.querySelector('.plane-svg');
+                    if (el) {
+                        el.style.setProperty('--plane-angle', angle + 'deg');
+                        
+                        // Scale Animation (Takeoff -> Cruise -> Landing)
+                        // Implementing a sustained plateau around the midpoint (0.45 to 0.55) 
+                        // to ensure it doesn't feel like it's shrinking early.
+                        let scale;
+                        if (obj.progress < 0.45) {
+                            // Growing phase: 0.8 to 2.2
+                            scale = 0.8 + 1.4 * (obj.progress / 0.45);
+                        } else if (obj.progress <= 0.55) {
+                            // Cruise phase: Stable 2.2
+                            scale = 2.2;
+                        } else {
+                            // Diminishing phase: 2.2 down to 0.8
+                            scale = 2.2 - 1.4 * ((obj.progress - 0.55) / 0.45);
+                        }
+                        el.style.scale = scale;
+                        
+                        // Opacity Fade: Instant in, very late out (last 1%)
+                        let opacity = 1;
+                        if (obj.progress < 0.01) {
+                            opacity = obj.progress / 0.01;
+                        } else if (obj.progress > 0.99) {
+                            opacity = (1 - obj.progress) / 0.01;
+                        }
+                        obj.plane.setOpacity(opacity);
                     }
-                    obj.plane.setOpacity(op);
+
+                    // Check for end of path AFTER rendering the frame
+                    if (isLastFrame) {
+                        setTimeout(() => {
+                            if (obj.plane) {
+                                obj.plane.remove();
+                                obj.plane = null;
+                            }
+                            obj.active = false;
+                            obj.progress = 0;
+                            activeFlights.delete(fnum);
+                        }, 100); // Tiny buffer to see arrival
+                    }
                 }
             });
         } catch (e) {
