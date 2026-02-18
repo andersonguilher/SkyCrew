@@ -135,7 +135,20 @@ include '../includes/layout_header.php';
                 <?php else: ?>
                     <?php foreach ($roster as $flight): ?>
                         <?php 
-                        $isToday = $flight['flight_date'] == date('Y-m-d');
+                        $pilotTz = new DateTimeZone($pilot['timezone'] ?: 'UTC');
+                        $depUtc = new DateTime($flight['flight_date'] . ' ' . $flight['dep_time'], new DateTimeZone('UTC'));
+                        $depLocal = clone $depUtc;
+                        $depLocal->setTimezone($pilotTz);
+
+                        $arrUtc = clone $depUtc;
+                        $arrUtc->modify('+' . $flight['duration_minutes'] . ' minutes');
+                        $arrLocal = clone $arrUtc;
+                        $arrLocal->setTimezone($pilotTz);
+
+                        // Improved Today Check: Compare local date of flight with current local date
+                        $nowLocal = new DateTime('now', $pilotTz);
+                        $isToday = $depLocal->format('Y-m-d') == $nowLocal->format('Y-m-d');
+                        
                         $statusColor = 'amber';
                         $statusIcon = 'clock';
                         $statusText = 'SUGESTÃO';
@@ -149,16 +162,6 @@ include '../includes/layout_header.php';
                                 <div class="flex items-center gap-3">
                                     <span class="text-[9px] font-bold text-slate-400 tracking-widest uppercase">
                                         <?php 
-                                        $pilotTz = new DateTimeZone($pilot['timezone'] ?: 'UTC');
-                                        $depUtc = new DateTime($flight['flight_date'] . ' ' . $flight['dep_time'], new DateTimeZone('UTC'));
-                                        $depLocal = clone $depUtc;
-                                        $depLocal->setTimezone($pilotTz);
-
-                                        $arrUtc = clone $depUtc;
-                                        $arrUtc->modify('+' . $flight['duration_minutes'] . ' minutes');
-                                        $arrLocal = clone $arrUtc;
-                                        $arrLocal->setTimezone($pilotTz);
-
                                         $days = [
                                             'Sun' => 'Domingo', 'Mon' => 'Segunda-feira', 'Tue' => 'Terça-feira', 
                                             'Wed' => 'Quarta-feira', 'Thu' => 'Quinta-feira', 'Fri' => 'Sexta-feira', 'Sat' => 'Sábado'
@@ -167,7 +170,7 @@ include '../includes/layout_header.php';
                                         echo $dayName . ' ' . $depLocal->format('d/m/Y') . ' ' . $depLocal->format('H:i') . ' LCL'; 
                                         ?>
                                     </span>
-                                    <?php if ($flight['flight_date'] == date('Y-m-d', strtotime('now'))): ?>
+                                    <?php if ($isToday): ?>
                                         <span class="bg-indigo-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full animate-pulse">HOJE</span>
                                     <?php endif; ?>
                                 </div>

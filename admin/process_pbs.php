@@ -21,9 +21,9 @@ try {
         $startDay = (int) ($stmt->fetchColumn() ?: 0);
         
         $startDate = new DateTime('today');
-        // Find next occurrence of startDay (could be today)
+        // Find start of current period (most recent start day)
         while ((int)$startDate->format('w') !== $startDay) {
-            $startDate->modify('+1 day');
+            $startDate->modify('-1 day');
         }
 
         $startDateStr = $startDate->format('Y-m-d');

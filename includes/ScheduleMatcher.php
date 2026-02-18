@@ -38,7 +38,7 @@ class ScheduleMatcher
             $stmt->execute([$id]);
             $last = $stmt->fetch();
             if ($last) {
-                $arrTS = strtotime($last['flight_date'] . ' ' . $last['dep_time']) + ($last['duration_minutes'] * 60);
+                $arrTS = strtotime($last['flight_date'] . ' ' . $last['dep_time'] . ' UTC') + ($last['duration_minutes'] * 60);
                 $this->aircraftCache[$id] = [
                     'location' => $last['arr_icao'],
                     'busy_until' => $arrTS
@@ -100,19 +100,33 @@ class ScheduleMatcher
             $dateStr = $currentDate->format('Y-m-d');
 
             $pref = null;
+            $pilotTz = new DateTimeZone($pilot['timezone'] ?: 'UTC');
+
             if (isset($preferences[$dayOfWeek])) {
                 $pref = $preferences[$dayOfWeek];
                 if (!$enforceWindows) {
-                    // Override strict window if enforcement is off
-                    $pref['start_time'] = '00:00:00';
-                    $pref['end_time'] = '23:59:59';
+                    // When enforcement is off, we still want to cover the WHOLE local day.
+                    // Converting 00:00-23:59 Local to UTC.
+                    $lStart = new DateTime($dateStr . ' 00:00:00', $pilotTz);
+                    $lEnd = new DateTime($dateStr . ' 23:59:59', $pilotTz);
+                    $lStart->setTimezone(new DateTimeZone('UTC'));
+                    $lEnd->setTimezone(new DateTimeZone('UTC'));
+                    
+                    $pref['start_time'] = $lStart->format('H:i:s');
+                    $pref['end_time'] = $lEnd->format('H:i:s');
+                    $pref['max_daily_hours'] = 24; // Truly unlimited
                 }
             } elseif (!$enforceWindows) {
                 // Allow scheduling on non-preferred days if enforcement is off
+                $lStart = new DateTime($dateStr . ' 00:00:00', $pilotTz);
+                $lEnd = new DateTime($dateStr . ' 23:59:59', $pilotTz);
+                $lStart->setTimezone(new DateTimeZone('UTC'));
+                $lEnd->setTimezone(new DateTimeZone('UTC'));
+
                 $pref = [
-                    'start_time' => '00:00:00', 
-                    'end_time' => '23:59:59', 
-                    'max_daily_hours' => 14
+                    'start_time' => $lStart->format('H:i:s'), 
+                    'end_time' => $lEnd->format('H:i:s'), 
+                    'max_daily_hours' => 24
                 ];
             } else {
                 // Strict mode: No preference -> No flight
@@ -120,8 +134,17 @@ class ScheduleMatcher
                 continue;
             }
 
-            $prefStart = new DateTime($dateStr . ' ' . $pref['start_time']);
-            $prefEnd = new DateTime($dateStr . ' ' . $pref['end_time']);
+            // Define the Pilot's window in UTC. 
+            // The stored times are already UTC.
+            $prefStart = new DateTime($dateStr . ' ' . $pref['start_time'], new DateTimeZone('UTC'));
+            $prefEnd = new DateTime($dateStr . ' ' . $pref['end_time'], new DateTimeZone('UTC'));
+            
+            // If end_time is numerically less than start_time, it means the local day window 
+            // crosses a UTC midnight boundary. Ensure the gap is correctly handled.
+            if ($prefEnd <= $prefStart) {
+                $prefEnd->modify('+1 day');
+            }
+
             $dailyHours = 0;
             $lastFlightId = null;
 
@@ -136,24 +159,49 @@ class ScheduleMatcher
                         $acId = $flight['aircraft_id'];
                         $acState = $this->aircraftCache[$acId];
 
-                        $flightDep = new DateTime($dateStr . ' ' . $flight['dep_time']);
-                        $flightArr = new DateTime($dateStr . ' ' . $flight['arr_time']);
-                        if ($flightArr < $flightDep) $flightArr->modify('+1 day');
+                        // A flight at time T can be on date D or D+1 UTC to fit in the pilot's Local Day D.
+                        // We check both possibilities.
+                        $tryDates = [$dateStr];
+                        $nextDay = clone $currentDate;
+                        $nextDay->modify('+1 day');
+                        $tryDates[] = $nextDay->format('Y-m-d');
+
+                        $chosenFlightDep = null;
+                        $chosenFlightArr = null;
+
+                        foreach ($tryDates as $tryDate) {
+                            $fDep = new DateTime($tryDate . ' ' . $flight['dep_time'], new DateTimeZone('UTC'));
+                            $fArr = clone $fDep;
+                            $fArr->modify('+' . $flight['duration_minutes'] . ' minutes');
+
+                            if ($fDep >= $prefStart && $fArr <= $prefEnd) {
+                                $chosenFlightDep = $fDep;
+                                $chosenFlightArr = $fArr;
+                                break;
+                            }
+                        }
+
+                        if (!$chosenFlightDep) continue;
+
+                        // Skip flights that have already departed relative to "now"
+                        if ($chosenFlightDep < new DateTime('now', new DateTimeZone('UTC'))) continue;
+
+                        $targetDateStr = $chosenFlightDep->format('Y-m-d');
 
                         // NEW CONSTRAINTS: Aircraft Availability & Location
                         // 1. Location Match
                         if ($acState['location'] !== $flight['dep_icao']) continue;
                         
                         // 2. Overlap Check (Confirmed)
-                        $depTS = $flightDep->getTimestamp();
-                        $arrTS = $flightArr->getTimestamp();
+                        $depTS = $chosenFlightDep->getTimestamp();
+                        $arrTS = $chosenFlightArr->getTimestamp();
                         
                         if ($depTS < $acState['busy_until']) continue;
                         
-                        $busyIntervals = $this->getAircraftBusyIntervals($acId, $dateStr);
+                        $busyIntervals = $this->getAircraftBusyIntervals($acId, $targetDateStr);
                         $hasOverlap = false;
                         foreach ($busyIntervals as $interval) {
-                            $iStart = strtotime($dateStr . ' ' . $interval['dep_time']);
+                            $iStart = strtotime($targetDateStr . ' ' . $interval['dep_time'] . ' UTC');
                             $iEnd = $iStart + ($interval['duration_minutes'] * 60);
                             if ($depTS < $iEnd && $arrTS > $iStart) {
                                 $hasOverlap = true; break;
@@ -161,27 +209,26 @@ class ScheduleMatcher
                         }
                         if ($hasOverlap) continue;
 
-                        // Original constraints
-                        if ($flightDep < $prefStart) continue;
-                        if ($flightArr > $prefEnd) continue;
+                        // Restraints on pilot hours and rest
                         $flightDurationHours = $flight['duration_minutes'] / 60;
                         if (($dailyHours + $flightDurationHours) > $pref['max_daily_hours']) continue;
+                        
                         if ($lastArrivalTime) {
-                            $isSameDay = $lastArrivalTime->format('Y-m-d') == $dateStr;
+                            $isSameDay = $lastArrivalTime->format('Y-m-d') == $targetDateStr;
                             $minRestMinutes = $isSameDay ? 45 : 600; 
                             $minDepTime = clone $lastArrivalTime;
                             $minDepTime->modify("+$minRestMinutes minutes");
-                            if ($flightDep < $minDepTime) continue;
+                            if ($chosenFlightDep < $minDepTime) continue;
                         }
                         if (!empty($aircraftPrefs) && !in_array($flight['aircraft_type'], $aircraftPrefs)) continue;
 
                         // SUCCESS
-                        $this->assignFlight($pilotId, $flight['id'], $dateStr);
-                        $schedule[] = ['date' => $dateStr, 'flight' => $flight];
+                        $this->assignFlight($pilotId, $flight['id'], $targetDateStr);
+                        $schedule[] = ['date' => $targetDateStr, 'flight' => $flight];
 
                         // Update State
                         $currentPilotLocation = $flight['arr_icao'];
-                        $lastArrivalTime = $flightArr;
+                        $lastArrivalTime = $chosenFlightArr;
                         $dailyHours += $flightDurationHours;
                         $lastFlightId = $flight['id'];
                         $legAdded = true;
