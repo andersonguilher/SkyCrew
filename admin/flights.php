@@ -118,16 +118,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $route = $_POST['route'] ?? null;
         $fuel = $_POST['estimated_fuel'] ?? 0;
         $pax = $_POST['passenger_count'] ?? 0;
-        $max_pax = $_POST['max_pax'] ?? 180;
-        $ticket_price = $_POST['ticket_price'] ?? 500.00;
         $waypoints = $_POST['route_waypoints'] ?? null;
         if (trim($waypoints) === '') $waypoints = null;
 
-        // Get ICAO for compat
-        $acStmt = $pdo->prepare("SELECT icao_code FROM fleet WHERE id = ?");
+        // Get ICAO and automated params (Max Pax and Maint Cost)
+        $acStmt = $pdo->prepare("
+            SELECT f.icao_code, am.max_pax,
+                   (SELECT SUM(ac.cost_preventive / ac.interval_fh) FROM aircraft_maintenance ac WHERE ac.model_icao = f.icao_code) as maint_per_fh
+            FROM fleet f
+            LEFT JOIN aircraft_models am ON f.icao_code = am.icao
+            WHERE f.id = ?
+        ");
         $acStmt->execute([$aircraft_id]);
         $acData = $acStmt->fetch();
         $ac = $acData['icao_code'] ?? 'Unknown';
+
+        // Auto-calculate Max Pax and Ticket Price
+        $max_pax = $acData['max_pax'] ?? 180;
+        $maintPerFH = (float)($acData['maint_per_fh'] ?? 0);
+        $markup = (float)($settings['ticket_markup'] ?? 700);
+        $hours = (int)$dur / 60;
+        $ticket_price = ($max_pax > 0 && $maintPerFH > 0) ? round(($maintPerFH * $hours / $max_pax) * $markup, 2) : 500.00;
 
         // Check for duplicates
         $check = $pdo->prepare("SELECT id FROM flights_master WHERE flight_number = ?");
@@ -196,16 +207,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $route = $_POST['route'] ?? null;
         $fuel = $_POST['estimated_fuel'] ?? 0;
         $pax = $_POST['passenger_count'] ?? 0;
-        $max_pax = $_POST['max_pax'] ?? 180;
-        $ticket_price = $_POST['ticket_price'] ?? 500.00;
         $waypoints = $_POST['route_waypoints'] ?? null;
         if (trim($waypoints) === '') $waypoints = null;
 
-        // Get ICAO for compat
-        $acStmt = $pdo->prepare("SELECT icao_code FROM fleet WHERE id = ?");
+        // Get ICAO and automated params (Max Pax and Maint Cost)
+        $acStmt = $pdo->prepare("
+            SELECT f.icao_code, am.max_pax,
+                   (SELECT SUM(ac.cost_preventive / ac.interval_fh) FROM aircraft_maintenance ac WHERE ac.model_icao = f.icao_code) as maint_per_fh
+            FROM fleet f
+            LEFT JOIN aircraft_models am ON f.icao_code = am.icao
+            WHERE f.id = ?
+        ");
         $acStmt->execute([$aircraft_id]);
         $acData = $acStmt->fetch();
         $ac = $acData['icao_code'] ?? 'Unknown';
+
+        // Auto-calculate Max Pax and Ticket Price
+        $max_pax = $acData['max_pax'] ?? 180;
+        $maintPerFH = (float)($acData['maint_per_fh'] ?? 0);
+        $markup = (float)($settings['ticket_markup'] ?? 700);
+        $hours = (int)$dur / 60;
+        $ticket_price = ($max_pax > 0 && $maintPerFH > 0) ? round(($maintPerFH * $hours / $max_pax) * $markup, 2) : 500.00;
 
         try {
             $stmt = $pdo->prepare("UPDATE flights_master SET flight_number=?, aircraft_id=?, dep_icao=?, arr_icao=?, dep_time=?, arr_time=?, aircraft_type=?, duration_minutes=?, route=?, estimated_fuel=?, passenger_count=?, max_pax=?, ticket_price=?, route_waypoints=? WHERE id=?");
@@ -354,12 +376,15 @@ include '../includes/layout_header.php';
         <form method="POST" id="dispatchForm" class="space-y-5">
             <div class="space-y-2">
                 <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Voo</label>
-                <input type="text" name="flight_number" value="<?php echo $passed_flight_number ?: ($prefix . str_pad($nextNum, 4, '0', STR_PAD_LEFT)); ?>" class="form-input font-bold" required>
+                <input type="text" name="flight_number" value="<?php echo $passed_flight_number ?: ($prefix . str_pad($nextNum, 4, '0', STR_PAD_LEFT)); ?>" class="form-input font-bold bg-white/5 opacity-60 pointer-events-none" readonly required>
             </div>
             <div class="space-y-2">
-                <div class="flex justify-between items-center"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Aeronave</label>
-                <label class="text-[10px] text-slate-500 cursor-pointer hover:text-white transition"><input type="checkbox" id="show_all_ac" class="rounded bg-white/5 border-white/20 text-indigo-500" onchange="checkAvailability()"> Ver Todas</label></div>
-                <select name="aircraft_id" id="ac" class="form-input" required onchange="checkAvailability(true); calcTicketPrice();">
+                <div class="flex justify-between items-center"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Aeronave (Matrícula)</label>
+                <?php if (!$selected_ac && !$edit_flight): ?>
+                    <label class="text-[10px] text-slate-500 cursor-pointer hover:text-white transition"><input type="checkbox" id="show_all_ac" class="rounded bg-white/5 border-white/20 text-indigo-500" onchange="checkAvailability()"> Ver Todas</label>
+                <?php endif; ?>
+                </div>
+                <select name="aircraft_id" id="ac" class="form-input <?php echo ($selected_ac) ? 'bg-white/5 opacity-60 pointer-events-none' : ''; ?>" required onchange="checkAvailability(true); calcTicketPrice();" <?php echo ($selected_ac) ? 'disabled' : ''; ?>>
                     <option value="">Selecione...</option>
                     <?php foreach ($fleet as $f): ?>
                             <option value="<?php echo $f['id']; ?>" data-location="<?php echo $f['last_location']; ?>" data-icao="<?php echo $f['icao_code']; ?>" <?php echo ($selected_ac == $f['id']) ? 'selected' : ''; ?>>
@@ -367,6 +392,9 @@ include '../includes/layout_header.php';
                             </option>
                     <?php endforeach; ?>
                 </select>
+                <?php if ($selected_ac): ?>
+                    <input type="hidden" name="aircraft_id" value="<?php echo $selected_ac; ?>">
+                <?php endif; ?>
                 <div id="ac_status" class="text-[9px] font-mono text-emerald-400 ml-1 hidden mt-1"></div>
                 
                 <div id="ac_schedule" class="mt-2 p-3 bg-white/5 rounded-xl border border-white/10 hidden">
@@ -379,7 +407,7 @@ include '../includes/layout_header.php';
             <div class="grid grid-cols-2 gap-4">
                 <div class="space-y-2 relative">
                     <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Origem</label>
-                    <input type="text" id="dep" name="dep_icao" class="form-input uppercase" placeholder="ICAO" maxlength="4" onkeyup="searchAirport(this); drawPlannedRoute();" value="<?php echo htmlspecialchars($sb_dep ?: ($_POST['dep_icao'] ?? '')); ?>" required>
+                    <input type="text" id="dep" name="dep_icao" class="form-input uppercase" placeholder="ICAO" maxlength="4" onkeyup="searchAirport(this); drawPlannedRoute(); checkAvailability();" value="<?php echo htmlspecialchars($sb_dep ?: ($_POST['dep_icao'] ?? '')); ?>" required>
                     <div id="dep_list" class="absolute left-0 right-0 top-full mt-1 glass-panel rounded-xl overflow-hidden z-50 hidden border border-white/20"></div>
                 </div>
                 <div class="space-y-2 relative">
@@ -404,17 +432,6 @@ include '../includes/layout_header.php';
                 <input type="number" id="dur" name="duration" class="form-input p-1" onchange="calcArrTime(); calcTicketPrice();" value="<?php echo htmlspecialchars($sb_dur ?: ($_POST['duration'] ?? '')); ?>" required></div>
                 <div class="space-y-2"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Chegada (Z)</label>
                 <input type="time" id="arr_time" name="arr_time" class="form-input p-1 bg-white/5 pointer-events-none opacity-50" readonly required tabindex="-1"></div>
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-                <div class="space-y-2"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Capacidade (MAX PAX)</label>
-                <input type="number" id="max_pax" name="max_pax" value="<?php echo htmlspecialchars($sb_max_pax ?: ($_POST['max_pax'] ?? '180')); ?>" class="form-input p-1 bg-white/5 opacity-60" readonly tabindex="-1"></div>
-                <div class="space-y-2">
-                    <div class="flex justify-between items-center">
-                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Preço Bilhete (R$)</label>
-                        <span id="ticket_auto" class="text-[9px] text-emerald-400 font-bold hidden"><i class="fas fa-magic mr-1"></i>AUTO</span>
-                    </div>
-                    <input type="number" step="0.01" id="ticket_price" name="ticket_price" value="<?php echo htmlspecialchars($sb_ticket_price ?: ($_POST['ticket_price'] ?? '500.00')); ?>" class="form-input p-1">
-                </div>
             </div>
             <div class="grid grid-cols-2 gap-3">
                 <div class="space-y-2"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Combustível Est. (Kg)</label>
@@ -1470,29 +1487,7 @@ include '../includes/layout_header.php';
 
 
     async function calcTicketPrice() {
-        const acEl = document.getElementById('ac');
-        const durEl = document.getElementById('dur');
-        const ticketEl = document.getElementById('ticket_price');
-        const maxPaxEl = document.getElementById('max_pax');
-        const autoTag = document.getElementById('ticket_auto');
-        
-        if (!acEl.value || !durEl.value) return;
-        
-        const icao = acEl.options[acEl.selectedIndex]?.getAttribute('data-icao');
-        if (!icao) return;
-        
-        try {
-            const r = await fetch(`../api/calc_ticket_price.php?model=${icao}&duration=${durEl.value}`);
-            const data = await r.json();
-            
-            if (data.ticket_price > 0) {
-                ticketEl.value = data.ticket_price.toFixed(2);
-                maxPaxEl.value = data.max_pax;
-                if (autoTag) autoTag.classList.remove('hidden');
-            }
-        } catch(e) {
-            console.error('Erro ao calcular preço:', e);
-        }
+        // Automatically calculated on server-side during save/update
     }
 
     function checkAvailability(isAcChange = false) {
@@ -1541,21 +1536,101 @@ include '../includes/layout_header.php';
                     schedEl.classList.add('hidden');
                 }
 
+
                 schedList.innerHTML = '';
+                const duration = parseInt(document.getElementById('dur').value) || 60;
+                const buffer = 40; // Turnaround buffer in minutes
+
+                const getSlotInfo = (startMin) => {
+                    let isSafe = true;
+                    let nextFlightDep = 1440; // End of day in minutes
+
+                    data.schedule.forEach(s => {
+                        const [dh, dm] = s.dep_time.split(':').map(Number);
+                        const [ah, am] = s.arr_time.split(':').map(Number);
+                        const sDep = dh * 60 + dm;
+                        const sArr = ah * 60 + am;
+
+                        // Check if current start overlaps any existing flight
+                        if (startMin >= sDep && startMin < sArr + buffer) isSafe = false;
+                        
+                        // Check if this is the next flight after our start
+                        if (sDep > startMin && sDep < nextFlightDep) {
+                            nextFlightDep = sDep;
+                        }
+                    });
+
+                    // Max Duration = (Next Flight Dep - Buffer) - Start Time
+                    const maxDuration = nextFlightDep - buffer - startMin;
+                    
+                    // If max duration is less than current selected duration, it's NOT safe or very tight
+                    if (maxDuration < duration) isSafe = false;
+                    
+                    // Tight if: we have less than 60 mins of margin over the required duration
+                    const margin = maxDuration - duration;
+                    const isTight = margin >= 0 && margin < 30; 
+
+                    return { isSafe, isTight, maxDuration };
+                };
+
+                const addSugg = (time, label = 'Sugerido', isTight = false, maxDur = 0) => {
+                    const d = document.createElement('div'); 
+                    const isOverLimit = duration > maxDur;
+                    
+                    d.className = `suggest-card text-[10px] font-bold transition-all duration-300 ${isTight ? 'text-amber-400 border-amber-500 shadow-[0_0_10px_rgba(251,191,36,0.2)]' : 'text-indigo-400'} group relative overflow-hidden`;
+                    if (isTight) d.style.borderColor = "#fbbf24"; 
+                    
+                    const limitTxt = maxDur > 0 && maxDur < 1440 
+                        ? (Math.floor(maxDur/60) + 'h' + (maxDur%60).toString().padStart(2, '0')) 
+                        : 'Livre';
+
+                    d.innerHTML = `<div class="absolute inset-0 ${isTight ? 'bg-amber-500/10' : 'bg-indigo-500/5'} group-hover:opacity-100 transition"></div>
+                                   <div class="relative flex items-center justify-between px-2">
+                                       <span>
+                                           <i class="fas ${isTight ? 'fa-triangle-exclamation animate-pulse' : 'fa-magic'} mr-1"></i> 
+                                           ${label} ${isTight ? '<span class="text-[8px] font-black bg-amber-500 text-black px-1 rounded ml-1">LIMITE PRÓXIMO</span>' : ''}
+                                           <span class="ml-2 opacity-90 font-mono text-[11px] font-bold text-white">Máx: ${limitTxt}</span>
+                                       </span>
+                                       <span class="${isTight ? 'bg-amber-500/30 text-white' : 'bg-indigo-500/20 text-indigo-300'} px-2 py-0.5 rounded font-mono">${time} (Z)</span>
+                                   </div>`;
+                    d.onclick = () => { 
+                        document.getElementById('dep_time').value = time; 
+                        calcArrTime(); 
+                        document.getElementById('ac_schedule').classList.add('hidden'); 
+                    };
+                    schedList.appendChild(d);
+                };
+
                 if (data.schedule?.length) {
                     data.schedule.forEach(s => {
                         const d = document.createElement('div'); d.className = 'route-card flex justify-between items-center text-[10px] text-slate-300';
                         d.innerHTML = `<span>${s.flight_number}</span> <span>${s.dep_icao}&raquo;${s.arr_icao}</span> <span class="bg-indigo-500/20 px-1 rounded text-indigo-300">${s.dep_time.substr(0,5)}</span>`;
                         schedList.appendChild(d);
                     });
-                    const last = data.schedule[data.schedule.length - 1], [h, m] = last.arr_time.split(':').map(Number);
-                    const t = (h * 60) + m + 45;
-                    const suggest = `${String(Math.floor(t/60)%24).padStart(2, '0')}:${String(t%60).padStart(2, '0')}`;
-                    const suggDiv = document.createElement('div'); suggDiv.className = 'suggest-card text-[10px] font-bold text-indigo-400';
-                    suggDiv.innerHTML = `<i class="fas fa-magic mr-1"></i> Sugestão: Decolar às ${suggest} (Z)`;
-                    suggDiv.onclick = () => { document.getElementById('dep_time').value = suggest; calcArrTime(); schedEl.classList.add('hidden'); };
-                    schedList.appendChild(suggDiv);
-                } else schedList.innerHTML = '<div class="text-[10px] text-slate-500 italic text-center py-2">Pronto para despacho.</div>';
+                    
+                    // 1. Suggest after each arrival
+                    data.schedule.forEach(s => {
+                        const [ah, am] = s.arr_time.split(':').map(Number);
+                        const t = (ah * 60) + am + buffer;
+                        const info = getSlotInfo(t);
+                        if (info.isSafe || info.isTight) {
+                            const time = `${String(Math.floor(t/60)%24).padStart(2, '0')}:${String(t%60).padStart(2, '0')}`;
+                            addSugg(time, 'Pós ' + s.arr_icao, info.isTight, info.maxDuration);
+                        }
+                    });
+
+                    // 2. Standard Windows (if they fit)
+                    ["08:00", "12:00", "14:00", "16:00", "18:00", "20:00", "22:00"].forEach(slot => {
+                        const [sh, sm] = slot.split(':').map(Number);
+                        const info = getSlotInfo(sh * 60 + sm);
+                        if (info.isSafe || info.isTight) {
+                             addSugg(slot, 'Janela', info.isTight, info.maxDuration);
+                        }
+                    });
+                } else {
+                    schedList.innerHTML = '<div class="text-[9px] text-slate-500 uppercase tracking-widest font-bold text-center py-2 mb-2 border-b border-white/5"><i class="fas fa-check-circle text-emerald-500 mr-1"></i> Pronto para Início de Dia</div>';
+                    ["08:00", "12:00", "16:00", "20:00"].forEach(slot => addSugg(slot, 'Turno'));
+                }
             });
         }
     }
