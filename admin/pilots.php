@@ -13,7 +13,10 @@ if ($search) {
 }
 
 // Fetch Pilots
-$stmt = $pdo->prepare("SELECT p.*, u.email FROM pilots p JOIN users u ON p.user_id = u.id $where ORDER BY p.name");
+$stmt = $pdo->prepare("SELECT p.*, u.email, 
+    (SELECT COUNT(*) FROM roster_assignments WHERE pilot_id = p.id AND status IN ('Suggested', 'Rejected')) as suggested_count,
+    (SELECT COUNT(*) FROM roster_assignments WHERE pilot_id = p.id AND status = 'Accepted') as accepted_count
+    FROM pilots p JOIN users u ON p.user_id = u.id $where ORDER BY p.name");
 $stmt->execute($params);
 $pilots = $stmt->fetchAll();
 
@@ -239,18 +242,31 @@ include '../includes/layout_header.php';
                             <?php echo number_format($p['total_hours'], 1); ?> h
                         </td>
                         <td class="px-8 py-4 text-right pr-8 flex justify-end gap-1">
-                            <a href="pilots.php?clear_roster=<?php echo $p['id']; ?>" 
-                               onclick="return confirm('Limpar todos os voos sugeridos deste piloto?')"
-                               class="p-2 text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition"
-                               title="Limpar Escala Sugerida">
-                                <i class="fas fa-calendar-minus"></i>
-                            </a>
-                            <a href="pilots.php?clear_accepted_roster=<?php echo $p['id']; ?>" 
-                               onclick="return confirm('Limpar todos os voos ACEITOS deste piloto?')"
-                               class="p-2 text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition"
-                               title="Limpar Voos Aceitos">
-                                <i class="fas fa-calendar-check"></i>
-                            </a>
+                            <?php if ($p['suggested_count'] > 0): ?>
+                                <a href="pilots.php?clear_roster=<?php echo $p['id']; ?>" 
+                                   onclick="return confirm('Limpar todos os voos sugeridos deste piloto?')"
+                                   class="p-2 text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition"
+                                   title="Limpar Escala Sugerida (<?php echo $p['suggested_count']; ?>)">
+                                    <i class="fas fa-calendar-minus"></i>
+                                </a>
+                            <?php else: ?>
+                                <div class="p-2 text-slate-600 opacity-30 cursor-not-allowed" title="Sem escala sugerida para limpar">
+                                    <i class="fas fa-calendar-minus"></i>
+                                </div>
+                            <?php endif; ?>
+
+                            <?php if ($p['accepted_count'] > 0): ?>
+                                <a href="pilots.php?clear_accepted_roster=<?php echo $p['id']; ?>" 
+                                   onclick="return confirm('Limpar todos os voos ACEITOS deste piloto?')"
+                                   class="p-2 text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition"
+                                   title="Limpar Voos Aceitos (<?php echo $p['accepted_count']; ?>)">
+                                    <i class="fas fa-calendar-check"></i>
+                                </a>
+                            <?php else: ?>
+                                <div class="p-2 text-slate-600 opacity-30 cursor-not-allowed" title="Sem voos aceitos para limpar">
+                                    <i class="fas fa-calendar-check"></i>
+                                </div>
+                            <?php endif; ?>
                             <a href="pilots.php?toggle_admin=<?php echo $p['id']; ?>" 
                                class="p-2 rounded-lg transition <?php echo $p['is_admin'] ? 'text-amber-500 bg-amber-500/10 hover:bg-amber-500/20' : 'text-slate-500 hover:text-white hover:bg-white/10'; ?>"
                                title="<?php echo $p['is_admin'] ? 'Revogar Admin' : 'Tornar Admin'; ?>">
