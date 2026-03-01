@@ -257,11 +257,9 @@ $flights = $pdo->query("
     ORDER BY fm.pair_id, fm.flight_number
 ")->fetchAll();
 
-// 1. Performance: By default, only load Accepted flights to keep map and DOM light
-$showFullNetwork = isset($_GET['full_network']);
-$mapFlights = array_filter($flights, function($f) use ($showFullNetwork) {
-    return $showFullNetwork || $f['roster_status'] === 'Accepted';
-});
+// 1. By default, show all flights in the map and table
+$showFullNetwork = true;
+$mapFlights = $flights;
 
 $initialMapData = json_encode(array_values($mapFlights));
 
@@ -346,13 +344,13 @@ $bgElement = '
     <div class="map-filters flex flex-col">
         <div class="filter-panel space-y-3">
             <div class="flex flex-col gap-1.5">
-                <button id="toggleRoster" onclick="toggleMapMode(\'roster\')" class="filter-btn active">
+                <button id="toggleRoster" onclick="toggleMapMode(\'roster\')" class="filter-btn">
                     <span class="flex items-center gap-2"><i class="fas fa-check-circle text-[10px]"></i> Voos Aceitos</span>
-                    <i class="fas fa-toggle-on text-sm"></i>
-                </button>
-                <button id="toggleAll" onclick="toggleMapMode(\'all\')" class="filter-btn">
-                    <span class="flex items-center gap-2"><i class="fas fa-globe-americas text-[10px]"></i> Malha Completa</span>
                     <i class="fas fa-toggle-off text-sm opacity-50"></i>
+                </button>
+                <button id="toggleAll" onclick="toggleMapMode(\'all\')" class="filter-btn active">
+                    <span class="flex items-center gap-2"><i class="fas fa-globe-americas text-[10px]"></i> Malha Completa</span>
+                    <i class="fas fa-toggle-on text-sm"></i>
                 </button>
             </div>
             
@@ -470,9 +468,19 @@ include '../includes/layout_header.php';
 </div>
 
 <form id="sbapiform" style="display:none;">
-    <input type="text" name="orig"><input type="text" name="dest"><input type="text" name="route"><input type="text" name="type">
-    <input type="text" name="airline" value="<?php echo $settings['va_callsign']; ?>"><input type="text" name="fltnum"><input type="text" name="units" value="KGS"><input type="text" name="navlog" value="1">
-    <input type="text" name="deph"><input type="text" name="depm">
+    <input type="text" name="orig" id="sb_orig">
+    <input type="text" name="dest" id="sb_dest">
+    <input type="text" name="route" id="sb_route">
+    <input type="text" name="type" id="sb_type">
+    <input type="text" name="airline" value="<?php echo $settings['va_callsign']; ?>">
+    <input type="text" name="fltnum" id="sb_fltnum">
+    <input type="text" name="pax" id="sb_pax">
+    <input type="text" name="cargo" id="sb_cargo">
+    <input type="text" name="plan_ramp" id="sb_fuel">
+    <input type="text" name="units" value="KGS">
+    <input type="text" name="navlog" value="1">
+    <input type="text" name="deph" id="sb_deph">
+    <input type="text" name="depm" id="sb_depm">
 </form>
 
 
@@ -627,7 +635,7 @@ include '../includes/layout_header.php';
     let airportCoordinates = {}; // Lookup for airport positions
     let allRouteData = <?php echo $initialMapData; ?>; 
     let isFullNetworkLoaded = <?php echo $showFullNetwork ? 'true' : 'false'; ?>;
-    let mapMode = 'roster'; 
+    let mapMode = 'all'; 
     const routeLayerGroup = L.layerGroup();
     const activeFlights = new Set(); // Track only flights currently animating
     const resetTimers = {}; // Store timers for debounce
@@ -904,8 +912,14 @@ include '../includes/layout_header.php';
 
     function toggleMapMode(mode) {
         mapMode = mode;
-        document.getElementById('toggleRoster').classList.toggle('active', mode === 'roster');
-        document.getElementById('toggleAll').classList.toggle('active', mode === 'all');
+        const rosterBtn = document.getElementById('toggleRoster');
+        const allBtn = document.getElementById('toggleAll');
+        
+        rosterBtn.classList.toggle('active', mode === 'roster');
+        rosterBtn.querySelector('i.fa-toggle-on, i.fa-toggle-off').className = mode === 'roster' ? 'fas fa-toggle-on text-sm' : 'fas fa-toggle-off text-sm opacity-50';
+        
+        allBtn.classList.toggle('active', mode === 'all');
+        allBtn.querySelector('i.fa-toggle-on, i.fa-toggle-off').className = mode === 'all' ? 'fas fa-toggle-on text-sm' : 'fas fa-toggle-off text-sm opacity-50';
         
         if (mode === 'all' && !isFullNetworkLoaded) {
             loadMapRoutes();
@@ -1593,29 +1607,41 @@ include '../includes/layout_header.php';
     }
 
     function updateSbInputs() {
-        const dep = document.getElementById('dep').value.toUpperCase();
-        const arr = document.getElementById('arr').value.toUpperCase();
-        const acId = document.getElementById('ac').value;
-        const fltNum = document.getElementsByName('flight_number')[0].value.replace(/\D/g, '');
-        const route = document.getElementById('route').value;
+        const dep = document.getElementById('dep').value.trim().toUpperCase();
+        const arr = document.getElementById('arr').value.trim().toUpperCase();
+        const acEl = document.getElementById('ac');
+        const acId = acEl.value;
+        const fltNumInput = document.getElementsByName('flight_number')[0];
+        const fltNum = fltNumInput ? fltNumInput.value.replace(/\D/g, '') : '';
+        const route = document.getElementById('route').value.trim();
         const depTime = document.getElementById('dep_time').value;
+        const pax = document.getElementsByName('passenger_count')[0]?.value || '';
+        const fuel = document.getElementsByName('estimated_fuel')[0]?.value || '';
+
+        // Fill SB Form
+        if (dep) document.getElementById('sb_orig').value = dep;
+        if (arr) document.getElementById('sb_dest').value = arr;
+        if (fltNum) document.getElementById('sb_fltnum').value = fltNum;
+        if (route) document.getElementById('sb_route').value = route;
+        if (pax) document.getElementById('sb_pax').value = pax;
+        if (fuel) document.getElementById('sb_fuel').value = fuel;
         
-        if (dep) document.getElementsByName('orig')[0].value = dep;
-        if (arr) document.getElementsByName('dest')[0].value = arr;
-        if (fltNum) document.getElementsByName('fltnum')[0].value = fltNum;
-        if (route) document.getElementsByName('route')[0].value = route;
-        
-        if (depTime) {
+        if (depTime && depTime.includes(':')) {
             const [h, m] = depTime.split(':');
-            document.getElementsByName('deph')[0].value = h;
-            document.getElementsByName('depm')[0].value = m;
+            document.getElementById('sb_deph').value = h;
+            document.getElementById('sb_depm').value = m;
         }
         
         if (acId) {
-            const acOption = document.querySelector(`#ac option[value="${acId}"]`);
-            const acText = acOption ? acOption.text : "";
-            const match = acText.match(/\((.*?)\)/);
-            if (match) document.getElementsByName('type')[0].value = match[1];
+            const acOption = acEl.options[acEl.selectedIndex];
+            const icao = acOption ? acOption.getAttribute('data-icao') : "";
+            if (icao) {
+                document.getElementById('sb_type').value = icao;
+            } else {
+                // Fallback to regex if attribute missing
+                const match = acOption.text.match(/\((.*?)\)/);
+                if (match) document.getElementById('sb_type').value = match[1];
+            }
         }
     }
 

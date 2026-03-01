@@ -36,29 +36,14 @@ if (!isset($data['email']) || !isset($data['roster_id'])) {
     exit;
 }
 
-// 1. Authenticate Request
-$settings = getSystemSettings($pdo);
-$internalKey = $settings['internal_api_key'] ?? null;
-$isAuthenticated = $isCLI; // If CLI, we assume local trust
-
-// Check if it's the internal WebSocket server
-if ($internalKey && isset($data['api_key']) && $data['api_key'] === $internalKey) {
-    $isAuthenticated = true;
-}
-
-// Fallback to Pilot Password (if provided)
+// 1. Find Pilot by Email
+// O cliente já fez a autenticação do usuário, então confiamos no email fornecido.
 $stmt = $pdo->prepare("SELECT u.*, p.*, p.id as pilot_id FROM users u JOIN pilots p ON u.id = p.user_id WHERE u.email = ?");
 $stmt->execute([$data['email']]);
 $user = $stmt->fetch();
 
-if (!$isAuthenticated) {
-    if (!$user || !isset($data['password']) || !password_verify($data['password'], $user['password'])) {
-        http_response_code(401);
-        echo json_encode(['error' => 'Unauthorized']);
-        exit;
-    }
-} elseif (!$user) {
-    http_response_code(404);
+if (!$user) {
+    if (!$isCLI) http_response_code(404);
     echo json_encode(['error' => 'Pilot not found for the provided email']);
     exit;
 }
@@ -73,19 +58,19 @@ $maintenanceRate = (float)($settings['maintenance_per_minute'] ?? 1.00);
 $parkingRate = (float)($settings['airport_fee_parking_per_minute'] ?? 0.50);
 $ticketPriceRate = (float)($settings['passenger_ticket_price'] ?? 500.00);
 
-// Fetch Roster/Flight Data
+// Fetch Roster/Flight Data by Flight Number (Callsign) and Pilot
 $stmt = $pdo->prepare("
-    SELECT fm.*, r.flight_date, fl.maintenance_rate as ac_maintenance_rate
+    SELECT r.id as true_roster_id, fm.*, r.flight_date, fl.maintenance_rate as ac_maintenance_rate
     FROM roster_assignments r 
     JOIN flights_master fm ON r.flight_id = fm.id 
     LEFT JOIN fleet fl ON fm.aircraft_id = fl.id
-    WHERE r.id = ?
+    WHERE fm.flight_number = ? AND r.pilot_id = ? AND r.status != 'Flown'
 ");
-$stmt->execute([$rosterId]);
+$stmt->execute([$rosterId, $pilotId]);
 $flightInfo = $stmt->fetch();
 
 if (!$flightInfo) {
-    http_response_code(404);
+    if (!$isCLI) http_response_code(404);
     echo json_encode(['error' => 'Roster assignment not found']);
     exit;
 }
@@ -104,16 +89,10 @@ $flightTimeHours = ($endTime - $startTime) / 3600;
 $flightTimeMinutes = ($endTime - $startTime) / 60;
 
 // 4. Financial Calculations
-// Determine Pax Count (Strictly from log as per user request)
-// Key can be 'pax', 'PaxCount', 'Passengers' or 'passenger_count'
-$paxCount = (int)($data['pax'] ?? $data['PaxCount'] ?? $data['Passengers'] ?? $data['passenger_count'] ?? 0);
-
-// Fallback logic: If missing in log, we could check flights_master.passenger_count 
-// but the user said "virá no logo" (it will come in the log). 
-// We'll use 0 if not provided, or 1 to avoid division by zero issues in other contexts (though not here).
+// Determine Pax Count directly from the system's scheduled DB instead of relying on the log
+$paxCount = (int)($flightInfo['passenger_count'] ?? 100);
 
 // Size multiplier (using 100 pax as baseline for configured rates)
-// This implements the user request: "definir pelo número de passageiros carregados"
 $sizeFactor = $paxCount / 100;
 if ($sizeFactor < 0.05) $sizeFactor = 0.05; // Minimum factor to avoid zero costs for ferry flights
 
@@ -221,8 +200,9 @@ try {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Approved', ?, ?, ?, ?, ?, ?, ?)
     ");
     
+    // Using actual database ID for foreign key references
     $stmt->execute([
-        $pilotId, $rosterId, round($flightTimeHours, 2), $fuelConsumed, (int)$verticalSpeed, 
+        $pilotId, $flightInfo['true_roster_id'], round($flightTimeHours, 2), $fuelConsumed, (int)$verticalSpeed, 
         $paxCount, $revenue, $comments, $incidents, $logJson, (int)$verticalSpeed, 
         $points, $maintenanceCost, $airportFees, $fuelCost, $pilotPay
     ]);
@@ -238,15 +218,16 @@ try {
     $newRankData = $nextRankStmt->fetch();
     $newRank = $newRankData ? $newRankData['rank_name'] : $user['rank'];
 
-    $updatePilot = $pdo->prepare("UPDATE pilots SET total_hours = ?, balance = ?, `rank` = ?, points = ? WHERE id = ?");
-    $updatePilot->execute([$newHours, $newBalance, $newRank, $newPoints, $pilotId]);
+    $updatePilot = $pdo->prepare("UPDATE pilots SET total_hours = ?, balance = ?, `rank` = ?, points = ?, current_base = ? WHERE id = ?");
+    $updatePilot->execute([$newHours, $newBalance, $newRank, $newPoints, $flightInfo['arr_icao'], $pilotId]);
 
     // 8. Update Aircraft Position and Roster Status
     $stmt = $pdo->prepare("UPDATE fleet f JOIN flights_master fm ON f.id = fm.aircraft_id SET f.current_icao = fm.arr_icao WHERE fm.id = ?");
     $stmt->execute([$flightInfo['id']]);
 
+    // Using assigned Roster ID from DB
     $stmt = $pdo->prepare("UPDATE roster_assignments SET status = 'Flown' WHERE id = ?");
-    $stmt->execute([$rosterId]);
+    $stmt->execute([$flightInfo['true_roster_id']]);
 
     // 9. Aircraft Maintenance Tracking — accumulate hours per registration
     $aircraftId = $flightInfo['aircraft_id'];
@@ -327,7 +308,7 @@ try {
             $stmtUpdateReport->execute([
                 $totalMaintenanceCharged,
                 number_format($totalMaintenanceCharged, 2, ',', '.'),
-                $rosterId,
+                $flightInfo['true_roster_id'],
                 $pilotId
             ]);
         }
@@ -359,3 +340,4 @@ try {
     if (!$isCLI) http_response_code(500);
     echo json_encode(['error' => 'Database Error: ' . $e->getMessage()]);
 }
+

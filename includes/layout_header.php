@@ -98,6 +98,10 @@ if (!$is_admin && isset($pdo)) {
                             <i class="fas fa-chart-pie"></i>
                             <span class="nav-label">Painel</span>
                         </a>
+                        <a href="pilots.php" class="nav-button <?php echo $current_page == 'pilots.php' ? 'active' : ''; ?>" title="Pilotos">
+                            <i class="fas fa-users"></i>
+                            <span class="nav-label">Pilotos</span>
+                        </a>
                         <a href="flights.php" class="nav-button <?php echo $current_page == 'flights.php' ? 'active' : ''; ?>" title="Voos">
                             <i class="fas fa-route"></i>
                             <span class="nav-label">Voos</span>

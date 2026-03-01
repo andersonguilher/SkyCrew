@@ -13,13 +13,15 @@ if (!isset($_GET['flight_id'])) {
 
 $rosterId = $_GET['flight_id'];
 
-// Fetch Flight Details
+// Fetch Flight Details including registration and planning data
 $stmt = $pdo->prepare("
     SELECT r.id, r.flight_date, fm.flight_number, fm.dep_icao, fm.arr_icao, 
            fm.dep_time, fm.arr_time, fm.aircraft_type, fm.duration_minutes,
-           p.simbrief_username
+           fm.route, fm.passenger_count, fm.estimated_fuel,
+           p.simbrief_username, fl.registration
     FROM roster_assignments r
     JOIN flights_master fm ON r.flight_id = fm.id
+    LEFT JOIN fleet fl ON fm.aircraft_id = fl.id
     JOIN pilots p ON r.pilot_id = p.id
     WHERE r.id = ? AND r.pilot_id = ?
 ");
@@ -30,21 +32,25 @@ if (!$flight) {
     die("Voo não encontrado.");
 }
 
-// SimBrief URL Construction
+// SimBrief URL Construction (dispatch.php expects values via GET)
 $sbUrl = "https://www.simbrief.com/system/dispatch.php?";
 $params = [
-    'newflight' => '1',
-    'airline'   => $sysSettings['va_callsign'],
-    'fltnum'    => preg_replace('/\D/', '', $flight['flight_number']),
-    'type'      => $flight['aircraft_type'],
-    'orig'      => $flight['dep_icao'],
-    'dest'      => $flight['arr_icao'],
-    'date'      => strtoupper(date('dMy', strtotime($flight['flight_date']))),
-    'deph'      => str_pad(substr($flight['dep_time'], 0, 2), 2, '0', STR_PAD_LEFT),
-    'depm'      => str_pad(substr($flight['dep_time'], 3, 2), 2, '0', STR_PAD_LEFT),
-    'steh'      => str_pad(floor($flight['duration_minutes'] / 60), 2, '0', STR_PAD_LEFT),
-    'stem'      => str_pad($flight['duration_minutes'] % 60, 2, '0', STR_PAD_LEFT),
-    'user'      => $flight['simbrief_username'] ?? ''
+    'newflight'  => '1',
+    'airline'    => $sysSettings['va_callsign'] ?? 'KFY',
+    'fltnum'     => preg_replace('/\D/', '', $flight['flight_number']),
+    'orig'       => $flight['dep_icao'],
+    'dest'       => $flight['arr_icao'],
+    'type'       => $flight['aircraft_type'],
+    'reg'        => $flight['registration'] ?? '',
+    'route'      => $flight['route'] ?? '',
+    'pax'        => $flight['passenger_count'] ?? '',
+    'cargo'      => 'AUTO',
+    'deph'       => str_pad(substr($flight['dep_time'], 0, 2), 2, '0', STR_PAD_LEFT),
+    'depm'       => str_pad(substr($flight['dep_time'], 3, 2), 2, '0', STR_PAD_LEFT),
+    'steh'       => str_pad(floor($flight['duration_minutes'] / 60), 2, '0', STR_PAD_LEFT),
+    'stem'       => str_pad($flight['duration_minutes'] % 60, 2, '0', STR_PAD_LEFT),
+    'units'      => 'KGS',
+    'navlog'     => '1'
 ];
 $dispatchUrl = $sbUrl . http_build_query($params);
 
@@ -125,9 +131,41 @@ include '../includes/layout_header.php';
                     </div>
                 </div>
 
-                <a href="<?php echo $dispatchUrl; ?>" target="_blank" class="btn-glow w-full py-5 flex items-center justify-center gap-3 text-sm uppercase tracking-[0.2em]">
-                    <i class="fas fa-external-link-alt"></i> Iniciar Despacho SimBrief
-                </a>
+                <!-- SimBrief Dispatch Form (POST to Dispatch API) -->
+                <form action="https://www.simbrief.com/system/dispatch.php" method="POST" target="_blank" id="dispatchForm">
+                    <!-- API Control Parameters -->
+                    <input type="hidden" name="newflight" value="1">
+                    <input type="hidden" name="type" value="<?php echo $flight['aircraft_type']; ?>">
+                    <input type="hidden" name="airline" value="<?php echo $sysSettings['va_callsign'] ?? 'KFY'; ?>">
+                    <input type="hidden" name="fltnum" value="<?php echo preg_replace('/\D/', '', $flight['flight_number']); ?>">
+                    
+                    <!-- Route Information -->
+                    <input type="hidden" name="orig" value="<?php echo $flight['dep_icao']; ?>">
+                    <input type="hidden" name="dest" value="<?php echo $flight['arr_icao']; ?>">
+                    <input type="hidden" name="route" value="<?php echo $flight['route'] ?? ''; ?>">
+                    
+                    <!-- Aircraft Detailed Info -->
+                    <input type="hidden" name="reg" value="<?php echo $flight['registration'] ?? ''; ?>">
+                    
+                    <!-- Flight Times -->
+                    <input type="hidden" name="deph" value="<?php echo str_pad(substr($flight['dep_time'], 0, 2), 2, '0', STR_PAD_LEFT); ?>">
+                    <input type="hidden" name="depm" value="<?php echo str_pad(substr($flight['dep_time'], 3, 2), 2, '0', STR_PAD_LEFT); ?>">
+                    <input type="hidden" name="steh" value="<?php echo str_pad(floor($flight['duration_minutes'] / 60), 2, '0', STR_PAD_LEFT); ?>">
+                    <input type="hidden" name="stem" value="<?php echo str_pad($flight['duration_minutes'] % 60, 2, '0', STR_PAD_LEFT); ?>">
+                    
+                    <!-- Payload & Units -->
+                    <input type="hidden" name="pax" value="<?php echo $flight['passenger_count'] ?? ''; ?>">
+                    <input type="hidden" name="units" value="KGS">
+                    <input type="hidden" name="navlog" value="1">
+                    
+                    <!-- Pilot & Internal Info -->
+                    <input type="hidden" name="user" value="<?php echo $flight['simbrief_username'] ?? ''; ?>">
+                    <input type="hidden" name="static_id" value="<?php echo $flight['id']; ?>">
+
+                    <button type="submit" class="btn-glow w-full py-5 flex items-center justify-center gap-3 text-sm uppercase tracking-[0.2em]">
+                        <i class="fas fa-external-link-alt"></i> Iniciar Despacho SimBrief
+                    </button>
+                </form>
                 
                 <p class="text-[10px] text-center text-slate-500 font-bold uppercase">Atenção: O plano deve ser gerado antes da partida.</p>
             </div>
